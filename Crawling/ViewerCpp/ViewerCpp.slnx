@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="ViewerCpp/ViewerCpp.vcxproj" Id="a9ebe02f-b4de-4bbf-bca8-229239d1d7d0" />
+</Solution>

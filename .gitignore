@@ -1,0 +1,7 @@
+*.csv
+*.parquet
+
+# Visual Studio
+.vs/
+*.VC.db
+*.opendb

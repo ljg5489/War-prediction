@@ -1,0 +1,8 @@
+﻿  main.cpp
+C:\Users\hk100\Desktop\War-prediction\Crawling\ViewerCpp\ViewerCpp\main.cpp(1,1): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+C:\Users\hk100\Desktop\War-prediction\Crawling\ViewerCpp\ViewerCpp\GdeltData.h(1,1): warning C4819: 현재 코드 페이지(949)에서 표시할 수 없는 문자가 파일에 들어 있습니다. 데이터가 손실되지 않게 하려면 해당 파일을 유니코드 형식으로 저장하십시오.
+  (소스 파일 'main.cpp'을(를) 컴파일하는 중)
+  
+  ViewerCpp.vcxproj -> C:\Users\hk100\Desktop\War-prediction\Crawling\ViewerCpp\x64\Debug\ViewerCpp.exe
+  'pwsh.exe'은(는) 내부 또는 외부 명령, 실행할 수 있는 프로그램, 또는
+  배치 파일이 아닙니다.
