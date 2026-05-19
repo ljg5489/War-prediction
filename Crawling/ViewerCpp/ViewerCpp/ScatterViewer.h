@@ -2,7 +2,9 @@
 #include <vector>
 #include <string>
 #include "GdeltData.h"
+#include "AcledData.h"
 #include <vtkSmartPointer.h>
 #include <vtkContextView.h>
 
 vtkSmartPointer<vtkContextView> ShowScatterPlot(const std::vector<GdeltPoint>& data, const std::string& columnName);
+vtkSmartPointer<vtkContextView> ShowScatterPlot(const std::vector<AcledPoint>& data);

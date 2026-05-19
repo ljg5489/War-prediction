@@ -147,16 +147,32 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="AcledData.h" />
     <ClInclude Include="BoxPlotViewer.h" />
+    <ClInclude Include="DeathCrossViewer.h" />
+    <ClInclude Include="EscalationViewer.h" />
     <ClInclude Include="GdeltData.h" />
     <ClInclude Include="HistogramViewer.h" />
+    <ClInclude Include="InteractiveGroupViewer.h" />
+    <ClInclude Include="LineChartViewer.h" />
+    <ClInclude Include="MultiLineChartViewer.h" />
+    <ClInclude Include="preview.h" />
     <ClInclude Include="ScatterViewer.h" />
+    <ClInclude Include="ToneDropViewer.h" />
+    <ClInclude Include="VDemData.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="BoxPlotViewer.cpp" />
+    <ClCompile Include="DeathCrossViewer.cpp" />
+    <ClCompile Include="EscalationViewer.cpp" />
     <ClCompile Include="HistogramViewer.cpp" />
+    <ClCompile Include="InteractiveGroupViewer.cpp" />
+    <ClCompile Include="LineChartViewer.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="MultiLineChartViewer.cpp" />
+    <ClCompile Include="preview.cpp" />
     <ClCompile Include="ScatterViewer.cpp" />
+    <ClCompile Include="ToneDropViewer.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
