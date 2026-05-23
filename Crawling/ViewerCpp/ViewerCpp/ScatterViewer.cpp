@@ -13,6 +13,10 @@
 #include <vtkRenderer.h>
 #include <vtkAxis.h>       // ✅ 추가: 축 범위 고정에 필요
 #include <vtkTextProperty.h> // ✅ 추가: 축 글씨 스타일
+#include <vtkCommand.h>
+#include <map>
+#include <vtkDoubleArray.h>
+#include <vtkStringArray.h>
 
 // ============================================================
 //  GDELT Scatter Plot
@@ -131,6 +135,302 @@ vtkSmartPointer<vtkContextView> ShowScatterPlot(
 
     // ✅ 마커 스타일: 원형
     points->SetMarkerStyle(vtkPlotPoints::CIRCLE);
+
+    view->GetRenderWindow()->Render();
+    return view;
+}
+
+
+// ============================================================
+//  3. ACLED Correlation Scatter Plot (단일 변수 고정)
+// ============================================================
+vtkSmartPointer<vtkContextView> ShowScatterPlot(
+    const std::vector<AcledPoint>& data,
+    const std::string& xVarName)
+{
+    if (data.empty()) return nullptr;
+
+    vtkSmartPointer<vtkTable> table = vtkSmartPointer<vtkTable>::New();
+    vtkSmartPointer<vtkFloatArray> arrX = vtkSmartPointer<vtkFloatArray>::New();
+    arrX->SetName(xVarName.c_str());
+    vtkSmartPointer<vtkFloatArray> arrY = vtkSmartPointer<vtkFloatArray>::New();
+    arrY->SetName("FATALITIES");
+
+    int validCount = 0;
+    for (const auto& pt : data) {
+        float xVal = 0.0f;
+        if (xVarName == "EVENTS") {
+            xVal = static_cast<float>(pt.events);
+        }
+        else if (xVarName == "POPULATION_EXPOSURE") {
+            xVal = static_cast<float>(pt.populationExposure);
+        }
+        else {
+            std::cerr << "지원하지 않는 X축 변수입니다: " << xVarName << std::endl;
+            return nullptr;
+        }
+
+        float yVal = static_cast<float>(pt.fatalities);
+        arrX->InsertNextValue(xVal);
+        arrY->InsertNextValue(yVal);
+        ++validCount;
+    }
+
+    table->AddColumn(arrX);
+    table->AddColumn(arrY);
+
+    vtkSmartPointer<vtkContextView> view = vtkSmartPointer<vtkContextView>::New();
+    // ✅ 배경을 완전한 하얀색으로 변경
+    view->GetRenderer()->SetBackground(1.0, 1.0, 1.0);
+    view->GetRenderWindow()->SetSize(900, 600);
+
+    std::string windowTitle = "Correlation: " + xVarName + " vs FATALITIES";
+    view->GetRenderWindow()->SetWindowName(windowTitle.c_str());
+
+    vtkSmartPointer<vtkChartXY> chart = vtkSmartPointer<vtkChartXY>::New();
+    view->GetScene()->AddItem(chart);
+    chart->SetShowLegend(false);
+
+    chart->SetTitle(windowTitle.c_str());
+    // ✅ 흰 배경에 맞춰 제목을 검은색으로 변경
+    chart->GetTitleProperties()->SetColor(0.0, 0.0, 0.0);
+    chart->GetTitleProperties()->SetFontSize(18);
+
+    vtkAxis* xAxis = chart->GetAxis(vtkAxis::BOTTOM);
+    xAxis->SetTitle(xVarName.c_str());
+    xAxis->SetBehavior(vtkAxis::AUTO);
+    // ✅ X축 글씨와 선을 모두 어둡게 변경
+    xAxis->GetTitleProperties()->SetColor(0.0, 0.0, 0.0);
+    xAxis->GetLabelProperties()->SetColor(0.0, 0.0, 0.0);
+    xAxis->GetGridPen()->SetColor(220, 220, 220, 255); // 밝은 회색 그리드
+
+    vtkAxis* yAxis = chart->GetAxis(vtkAxis::LEFT);
+    yAxis->SetTitle("Fatalities (Y)");
+    yAxis->SetBehavior(vtkAxis::AUTO);
+    // ✅ Y축 글씨와 선을 모두 어둡게 변경
+    yAxis->GetTitleProperties()->SetColor(0.0, 0.0, 0.0);
+    yAxis->GetLabelProperties()->SetColor(0.0, 0.0, 0.0);
+    yAxis->GetGridPen()->SetColor(220, 220, 220, 255);
+
+    vtkPlotPoints* points = vtkPlotPoints::SafeDownCast(chart->AddPlot(vtkChart::POINTS));
+    points->SetInputData(table, 0, 1);
+
+    // ✅ 점을 통계학 표준 파란색(Blue) 계열로 변경 (반투명 적용)
+    points->SetColor(50, 130, 220, 150);
+    points->SetMarkerSize(3.0);
+    points->SetMarkerStyle(vtkPlotPoints::CIRCLE);
+
+    view->GetRenderWindow()->Render();
+    return view;
+}
+
+// ============================================================
+// 🌟 4. 방향키 입력을 감지하는 감시자(Observer) 클래스
+// ============================================================
+class AcledKeyObserver : public vtkCommand {
+public:
+    static AcledKeyObserver* New() { return new AcledKeyObserver; }
+
+    std::vector<AcledPoint> allData;
+    std::vector<std::string> xVarNames;
+    int currentIndex = 0;
+
+    vtkSmartPointer<vtkTable> table;
+    vtkSmartPointer<vtkChartXY> chart;
+    vtkSmartPointer<vtkRenderWindow> renderWindow;
+
+    virtual void Execute(vtkObject* caller, unsigned long eventId, void* callData) override {
+        vtkRenderWindowInteractor* iren = vtkRenderWindowInteractor::SafeDownCast(caller);
+        if (!iren) return;
+
+        std::string key = iren->GetKeySym();
+
+        if (key == "Right") {
+            currentIndex = (currentIndex + 1) % xVarNames.size();
+            UpdateChart();
+        }
+        else if (key == "Left") {
+            currentIndex = (currentIndex - 1 + xVarNames.size()) % xVarNames.size();
+            UpdateChart();
+        }
+    }
+
+    void UpdateChart() {
+        std::string currentXVar = xVarNames[currentIndex];
+
+        vtkFloatArray* arrX = vtkFloatArray::SafeDownCast(table->GetColumn(0));
+        vtkFloatArray* arrY = vtkFloatArray::SafeDownCast(table->GetColumn(1));
+
+        arrX->SetNumberOfValues(0);
+        arrY->SetNumberOfValues(0);
+
+        bool isCategorical = false;
+        std::map<std::string, float> categoryMap;
+        float nextCategoryId = 1.0f;
+
+        std::vector<float> tempX;
+        std::vector<float> tempY;
+        std::vector<std::string> tempCat;
+
+        // 1️⃣ 데이터를 임시 수집합니다.
+        for (const auto& pt : allData) {
+            tempY.push_back(static_cast<float>(pt.fatalities));
+
+            if (currentXVar == "EVENTS") {
+                tempX.push_back(static_cast<float>(pt.events));
+            }
+            else if (currentXVar == "POPULATION_EXPOSURE") {
+                tempX.push_back(static_cast<float>(pt.populationExposure));
+            }
+            else {
+                // 🌟 여기서 문자열(글자) 변수들을 감지합니다!
+                isCategorical = true;
+                std::string catVal = "";
+                if (currentXVar == "REGION") catVal = pt.region;
+                else if (currentXVar == "ADMIN1") catVal = pt.admin1;
+                else if (currentXVar == "EVENT_TYPE") catVal = pt.eventType;
+                else if (currentXVar == "SUB_EVENT_TYPE") catVal = pt.subEventType;
+                else if (currentXVar == "DISORDER_TYPE") catVal = pt.disorderType;
+
+                if (catVal.empty()) catVal = "Unknown";
+                tempCat.push_back(catVal);
+            }
+        }
+
+        // 2️⃣ 수치형 데이터일 경우 사분면(Quadrant)을 만들기 위해 평균(Mean)을 구합니다.
+        float meanX = 0.0f, meanY = 0.0f;
+        if (!isCategorical && !tempX.empty()) {
+            for (float x : tempX) meanX += x;
+            meanX /= tempX.size();
+        }
+        if (!tempY.empty()) {
+            for (float y : tempY) meanY += y;
+            meanY /= tempY.size();
+        }
+
+        // 3️⃣ 테이블에 변환된 최종 데이터를 밀어 넣습니다.
+        for (size_t i = 0; i < tempY.size(); ++i) {
+            float finalX = 0.0f;
+            float finalY = 0.0f;
+
+            if (isCategorical) {
+                // [문자열 모드]: 글자를 좌표(1, 2, 3...)로 변환
+                std::string cat = tempCat[i];
+                if (categoryMap.find(cat) == categoryMap.end()) {
+                    categoryMap[cat] = nextCategoryId++;
+                }
+                finalX = categoryMap[cat];
+                finalY = tempY[i]; // 사망자 절대값
+            }
+            else {
+                // [수치형 모드]: 평균 이동(Mean-Centering) 적용하여 사분면 십자가 중앙 정렬!
+                finalX = tempX[i] - meanX;
+                finalY = tempY[i] - meanY;
+            }
+
+            arrX->InsertNextValue(finalX);
+            arrY->InsertNextValue(finalY);
+        }
+
+        table->Modified();
+
+        // 4️⃣ 축(Axis) 이름과 눈금 디자인 변경
+        vtkAxis* xAxis = chart->GetAxis(vtkAxis::BOTTOM);
+        vtkAxis* yAxis = chart->GetAxis(vtkAxis::LEFT);
+
+        if (isCategorical) {
+            xAxis->SetTitle(currentXVar.c_str());
+            yAxis->SetTitle("Fatalities (Raw Count)");
+
+            // X축 밑에 숫자가 아닌 글자(Battles 등)를 직접 달아줍니다.
+            vtkSmartPointer<vtkDoubleArray> customTicks = vtkSmartPointer<vtkDoubleArray>::New();
+            vtkSmartPointer<vtkStringArray> customLabels = vtkSmartPointer<vtkStringArray>::New();
+            for (const auto& pair : categoryMap) {
+                customTicks->InsertNextValue(pair.second);
+                customLabels->InsertNextValue(pair.first.c_str());
+            }
+            xAxis->SetCustomTickPositions(customTicks, customLabels);
+            xAxis->GetLabelProperties()->SetOrientation(45); // 글자 겹침 방지 기울임
+        }
+        else {
+            // 평균 이동이 적용되었음을 축에 명시합니다.
+            std::string xLabel = currentXVar + " (Centered: X - Mean)";
+            xAxis->SetTitle(xLabel.c_str());
+            yAxis->SetTitle("Fatalities (Centered: Y - Mean)");
+
+            // 기본 숫자형 축으로 원상복구
+            xAxis->SetCustomTickPositions(nullptr, nullptr);
+            xAxis->GetLabelProperties()->SetOrientation(0);
+        }
+
+        std::string newTitle = "Correlation: [" + currentXVar + "] vs [FATALITIES]";
+        chart->SetTitle(newTitle.c_str());
+
+        chart->RecalculateBounds();
+        renderWindow->Render();
+    }
+};
+// ============================================================
+// 🌟 5. ACLED Interactive Correlation Scatter Plot 
+// ============================================================
+vtkSmartPointer<vtkContextView> ShowInteractiveScatterPlot(
+    const std::vector<AcledPoint>& data,
+    const std::vector<std::string>& xVarNames)
+{
+    if (data.empty() || xVarNames.empty()) return nullptr;
+
+    vtkSmartPointer<vtkTable> table = vtkSmartPointer<vtkTable>::New();
+    vtkSmartPointer<vtkFloatArray> arrX = vtkSmartPointer<vtkFloatArray>::New();
+    vtkSmartPointer<vtkFloatArray> arrY = vtkSmartPointer<vtkFloatArray>::New();
+
+    arrX->SetName("X_Data");
+    arrY->SetName("Y_Data");
+
+    table->AddColumn(arrX);
+    table->AddColumn(arrY);
+
+    vtkSmartPointer<vtkContextView> view = vtkSmartPointer<vtkContextView>::New();
+    view->GetRenderer()->SetBackground(1.0, 1.0, 1.0); // 교과서 스타일 흰 배경
+    view->GetRenderWindow()->SetSize(900, 600);
+    view->GetRenderWindow()->SetWindowName("Interactive Correlation Dashboard");
+
+    vtkSmartPointer<vtkChartXY> chart = vtkSmartPointer<vtkChartXY>::New();
+    view->GetScene()->AddItem(chart);
+    chart->SetShowLegend(false);
+
+    chart->GetTitleProperties()->SetColor(0.0, 0.0, 0.0);
+    chart->GetTitleProperties()->SetFontSize(18);
+
+    vtkAxis* xAxis = chart->GetAxis(vtkAxis::BOTTOM);
+    xAxis->SetBehavior(vtkAxis::AUTO);
+    xAxis->GetTitleProperties()->SetColor(0.0, 0.0, 0.0);
+    xAxis->GetLabelProperties()->SetColor(0.0, 0.0, 0.0);
+    xAxis->GetGridPen()->SetColor(220, 220, 220, 255);
+
+    vtkAxis* yAxis = chart->GetAxis(vtkAxis::LEFT);
+    yAxis->SetBehavior(vtkAxis::AUTO);
+    yAxis->GetTitleProperties()->SetColor(0.0, 0.0, 0.0);
+    yAxis->GetLabelProperties()->SetColor(0.0, 0.0, 0.0);
+    yAxis->GetGridPen()->SetColor(220, 220, 220, 255);
+
+    vtkPlotPoints* points = vtkPlotPoints::SafeDownCast(chart->AddPlot(vtkChart::POINTS));
+    if (points) {
+        points->SetInputData(table, 0, 1);
+        points->SetColor(50, 130, 220, 150); // 정통 통계학 파란색
+        points->SetMarkerSize(3.5);
+        points->SetMarkerStyle(vtkPlotPoints::CIRCLE);
+    }
+
+    vtkSmartPointer<AcledKeyObserver> observer = vtkSmartPointer<AcledKeyObserver>::New();
+    observer->allData = data;
+    observer->xVarNames = xVarNames;
+    observer->table = table;
+    observer->chart = chart;
+    observer->renderWindow = view->GetRenderWindow();
+
+    observer->UpdateChart();
+
+    view->GetInteractor()->AddObserver(vtkCommand::KeyPressEvent, observer);
 
     view->GetRenderWindow()->Render();
     return view;

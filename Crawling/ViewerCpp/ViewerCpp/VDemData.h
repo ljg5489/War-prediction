@@ -17,4 +17,5 @@ struct VDemPoint {
     double v2x_veracc = 0.0;    // [10]
     double v2xcs_ccsi = 0.0;    // [11]
     double v2x_polyarchy = 0.0; // [12] 선거 민주주의 지수
+    double v2elintim = 0.0;
 };

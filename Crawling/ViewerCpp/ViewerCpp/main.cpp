@@ -204,12 +204,17 @@ int main() {
     std::vector<AcledPoint> rawData_Acled;
     std::vector<VDemPoint> rawData_Vdem;
 
+    // 결측치 카운트 변수
+    int GdeltmissingValue = 0;
+    int AcledmissingValue = 0;
+    int VdemmissingValue = 0;
+
     // ==========================================================
     //  Loading 부분
     // ==========================================================
 
     // ── GDELT Loading ─────────────────────────────────────────
-    std::getline(file, line); // Header skip
+    /*std::getline(file, line); // Header skip
 
     std::cout << "Loading GDELT..." << std::endl;
 
@@ -244,7 +249,7 @@ int main() {
 
     file.close();
     std::cout << "Load GDELT Complete! (" << rawData.size() << " points)" << std::endl;
-
+    */
 
     // ── ACLED Loading ─────────────────────────────────────────
     // ✅ 버그2 수정: Preview 단계에서 이미 헤더 + 데이터 3줄을 읽어버렸으므로
@@ -272,14 +277,40 @@ int main() {
             pt.eventType = row[4];
 
             // 숫자 필드: 개별 try-catch로 한 줄 전체를 버리지 않음
-            try { if (!row[6].empty())  pt.events = std::stoi(row[6]); }
-            catch (...) {}
-            try { if (!row[7].empty())  pt.fatalities = std::stoi(row[7]); }
-            catch (...) {}
-            try { if (!row[11].empty()) pt.latitude = std::stod(row[11]); }
-            catch (...) {}
-            try { if (!row[12].empty()) pt.longitude = std::stod(row[12]); }
-            catch (...) {}
+            // 1. 발생 건수 (EVENTS)
+            try {
+                if (!row[6].empty()) pt.events = std::stoi(row[6]);
+                else AcledmissingValue++;
+            }
+            catch (...) { AcledmissingValue++; }
+
+            // 2. 사망자 수 (FATALITIES)
+            try {
+                if (!row[7].empty()) pt.fatalities = std::stoi(row[7]);
+                else AcledmissingValue++;
+            }
+            catch (...) { AcledmissingValue++; }
+
+            // 3. 노출 인구 (POPULATION_EXPOSURE) - 누락되었던 부분 추가!
+            try {
+                if (!row[8].empty()) pt.populationExposure = std::stoi(row[8]);
+                else AcledmissingValue++;
+            }
+            catch (...) { AcledmissingValue++; }
+
+            // 4. 위도 (LATITUDE)
+            try {
+                if (!row[11].empty()) pt.latitude = std::stod(row[11]);
+                else AcledmissingValue++;
+            }
+            catch (...) { AcledmissingValue++; }
+
+            // 5. 경도 (LONGITUDE)
+            try {
+                if (!row[12].empty()) pt.longitude = std::stod(row[12]);
+                else AcledmissingValue++;
+            }
+            catch (...) { AcledmissingValue++; }
 
             // 위도·경도가 정상 범위일 때만 저장
             if (pt.latitude != 0.0 && pt.longitude != 0.0) {
@@ -292,6 +323,7 @@ int main() {
 
     // ✅ 로드된 점 개수 확인용 디버그 출력 (0이면 CSV 컬럼 인덱스 재확인 필요)
     std::cout << "Load ACLED Complete! (" << rawData_Acled.size() << " points)" << std::endl;
+    std::cout << "Missing Value ACLED : " << AcledmissingValue << std::endl;
 
 
 
@@ -340,6 +372,8 @@ int main() {
             catch (...) {}
             try { if (!row[12].empty()) pt.v2x_polyarchy = std::stod(row[12]); }
             catch (...) {}
+            try { if (!row[13].empty()) pt.v2elintim = std::stod(row[13]); }
+            catch (...) {}
 
             rawData_Vdem.push_back(pt);
         }
@@ -354,13 +388,14 @@ int main() {
     // ==========================================================
     //  파이프라인 가동
     // ==========================================================
-    /*
     // GEDELT
+    /*
     auto view1 = ShowHistogram(rawData, 50, -10.0, 10.0);
     auto view2 = ShowBoxPlot(rawData, "Goldstein Scale");
     auto view3 = ShowScatterPlot(rawData, "Goldstein Scale");
     auto view4 = ShowLineChart(rawData, "Average Tone");
     auto view_map = ShowScatterPlot(rawData_Acled);
+    */
     
     // V-Dem에 대한 시각화(그룹별로 창을 나눠 방향키로 탭바꾸기)
     //  Group A: 심각한 분쟁 및 위기 국가 (High Conflict)
@@ -374,14 +409,11 @@ int main() {
     //  Group C: 안정적인 민주주의 국가 (Stable)
     std::vector<std::string> codesC = { "NOR", "CHE", "JPN", "KOR", "PRT", "URY", "BWA", "MNG", "CAN", "DEU" };
     std::vector<std::string> namesC = { "Norway", "Switzerland", "Japan", "South Korea", "Portugal", "Uruguay", "Botswana", "Mongolia", "Canada", "Germany" };
-    */
 
     // 3개의 독립적인 상호작용 창 생성 - V-DEM
-    /*
     auto viewA = ShowInteractiveGroupChart(rawData_Vdem, "[Group A]", codesA, namesA);
     auto viewB = ShowInteractiveGroupChart(rawData_Vdem, "[Group B]", codesB, namesB);
     auto viewC = ShowInteractiveGroupChart(rawData_Vdem, "[Group C]", codesC, namesC);
-    */
 
     // 미디어 톤 급락 - GDELT
     auto view_tone_sy = ShowToneDropChart(rawData, "SY", 14); // 시리아
@@ -400,6 +432,20 @@ int main() {
     auto view_esc_mmr = ShowEscalationChart(rawData_Acled, "Myanmar");   // 쿠데타발 급가속
     auto view_esc_sdn = ShowEscalationChart(rawData_Acled, "Sudan");     // 군벌 간 전면전 폭발
     auto view_esc_eth = ShowEscalationChart(rawData_Acled, "Ethiopia");  // 지역 갈등의 전쟁화
+
+    auto view_scatterview = ShowScatterPlot(rawData_Acled); // 위도, 경도 지도 그리기 
+
+    // 🌟 보고 싶은 X축 변수들의 이름을 리스트로 묶습니다.
+    std::vector<std::string> targetXVars = {
+        "EVENTS",                // 발생 건수 (규모)
+        "POPULATION_EXPOSURE",   // 노출 인구 (밀집도 리스크)
+        "EVENT_TYPE",            // 상위 사건 분류
+        "SUB_EVENT_TYPE",        // 상세 사건 분류 (강력 추천)
+        "DISORDER_TYPE"          // 정치적 폭력 성격
+    };
+
+    // 🌟 데이터와 리스트를 함께 던져서 인터랙티브 뷰어를 호출합니다.
+    auto view_corr = ShowInteractiveScatterPlot(rawData_Acled, targetXVars);
 
     if (view_esc != nullptr) {
         view_esc->GetInteractor()->Start();
