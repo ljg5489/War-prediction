@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="FilterYears/FilterYears.vcxproj" Id="0337a9f5-caa9-4b70-a99b-a56f6ef55d00" />
+</Solution>

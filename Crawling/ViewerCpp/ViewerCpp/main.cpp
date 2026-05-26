@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 #include <windows.h>
+#include <algorithm>
+#include <cmath>
 
 #include "GdeltData.h"
 #include "AcledData.h"
@@ -25,9 +27,74 @@ VTK_MODULE_INIT(vtkInteractionStyle);
 VTK_MODULE_INIT(vtkRenderingContextOpenGL2);
 
 // ============================================================
-// ✅ 버그1 수정: 큰따옴표 필드 안의 쉼표를 올바르게 처리하는 CSV 파서
-//    기존 std::getline(ss, cell, ',') 방식은 "Somalia, South" 같은
-//    필드 내부의 쉼표를 컬럼 구분자로 오인하여 인덱스를 밀어버림.
+// 중앙값(Median) 계산 함수 (이상치 탐지용)
+// ============================================================
+static double CalculateMedian(std::vector<double> data) {
+    if (data.empty()) return 0.0;
+    std::sort(data.begin(), data.end());
+    size_t n = data.size();
+    if (n % 2 == 0) {
+        return (data[n / 2 - 1] + data[n / 2]) / 2.0;
+    }
+    else {
+        return data[n / 2];
+    }
+}
+
+// ============================================================
+// MAD (Median Absolute Deviation) 기반 이상치 탐지 및 출력 함수
+// ============================================================
+static void DetectOutliersMAD(std::vector<double>& data, const std::string& variableName, double threshold = 3.0) {
+    if (data.empty()) {
+        std::cout << "[" << variableName << "] 데이터가 없습니다.\n";
+        return;
+    }
+
+    double median = CalculateMedian(data);
+
+    std::vector<double> absoluteDeviations;
+    absoluteDeviations.reserve(data.size());
+    for (double val : data) {
+        absoluteDeviations.push_back(std::abs(val - median));
+    }
+
+    double mad = CalculateMedian(absoluteDeviations);
+    double scaledMad = mad * 1.4826;
+
+    std::cout << "\n========================================\n";
+    std::cout << " [" << variableName << "] 통계적 이상치 분석 (MAD) \n";
+    std::cout << "========================================\n";
+    std::cout << "- 데이터 개수: " << data.size() << "\n";
+    std::cout << "- 중앙값(Median): " << median << "\n";
+    std::cout << "- MAD(스케일 적용): " << scaledMad << "\n";
+
+    if (scaledMad == 0.0) {
+        std::cout << " -> 데이터 변동성이 너무 적어(MAD=0) 이상치 탐지가 어렵습니다.\n";
+        return;
+    }
+
+    int outlierCount = 0;
+    for (size_t i = 0; i < data.size(); ++i) {
+        double modifiedZScore = std::abs(data[i] - median) / scaledMad;
+
+        if (modifiedZScore > threshold) {
+            outlierCount++;
+            if (outlierCount <= 5) {
+                std::cout << " -> ⚠️ 이상치 발견: 값 = " << data[i]
+                    << " (Modified Z-Score: " << modifiedZScore << ")\n";
+            }
+        }
+    }
+
+    if (outlierCount > 5) {
+        std::cout << " -> ... 외 " << (outlierCount - 5) << "개의 이상치가 더 존재합니다.\n";
+    }
+    std::cout << " -> 📌 총 이상치 개수: " << outlierCount << "개 ("
+        << (double)outlierCount / data.size() * 100.0 << "%)\n";
+}
+
+// ============================================================
+// 버그1 수정: 큰따옴표 필드 안의 쉼표를 올바르게 처리하는 CSV 파서
 // ============================================================
 static std::vector<std::string> ParseCSVLine(const std::string& line) {
     std::vector<std::string> result;
@@ -37,13 +104,12 @@ static std::vector<std::string> ParseCSVLine(const std::string& line) {
     for (size_t i = 0; i < line.size(); ++i) {
         char c = line[i];
         if (c == '"') {
-            // "" 형태의 이스케이프된 따옴표 처리
             if (inQuotes && i + 1 < line.size() && line[i + 1] == '"') {
                 field += '"';
                 ++i;
             }
             else {
-                inQuotes = !inQuotes; // 따옴표 구역 진입/탈출
+                inQuotes = !inQuotes;
             }
         }
         else if (c == ',' && !inQuotes) {
@@ -54,15 +120,122 @@ static std::vector<std::string> ParseCSVLine(const std::string& line) {
             field += c;
         }
     }
-    result.push_back(field); // 마지막 필드 추가
+    result.push_back(field);
     return result;
 }
 
+// ==========================================================
+//  사전(Dictionary) 세팅
+// ==========================================================
+std::unordered_map<std::string, std::string> CANONICAL = {
+    {"Syria", "A"}, {"Yemen", "A"}, {"Somalia", "A"}, {"Myanmar", "A"},
+    {"Ethiopia", "A"}, {"South Sudan", "A"}, {"Mali", "A"}, {"DR Congo", "A"},
+    {"Ukraine", "A"}, {"Iraq", "A"},
+    {"Pakistan", "B"}, {"Nigeria", "B"}, {"Venezuela", "B"}, {"Sudan", "B"},
+    {"Central African Republic", "B"}, {"Taiwan", "B"}, {"Haiti", "B"},
+    {"Lebanon", "B"}, {"Colombia", "B"}, {"Ecuador", "B"},
+    {"Norway", "C"}, {"Switzerland", "C"}, {"Japan", "C"}, {"South Korea", "C"},
+    {"Portugal", "C"}, {"Uruguay", "C"}, {"Botswana", "C"}, {"Mongolia", "C"},
+    {"Canada", "C"}, {"Germany", "C"},
+    {"Afghanistan", "TARGET"}
+};
+
+std::unordered_map<std::string, std::string> ALIAS_MAP = {
+    {"syria", "Syria"}, {"syrian arab republic", "Syria"}, {"syr", "Syria"}, {"sy", "Syria"},
+    {"yemen", "Yemen"}, {"yemen, rep.", "Yemen"}, {"republic of yemen", "Yemen"}, {"yem", "Yemen"}, {"ym", "Yemen"},
+    {"somalia", "Somalia"}, {"som", "Somalia"}, {"so", "Somalia"},
+    {"myanmar", "Myanmar"}, {"myanmar (burma)", "Myanmar"}, {"burma", "Myanmar"}, {"mmr", "Myanmar"}, {"mya", "Myanmar"}, {"bm", "Myanmar"},
+    {"ethiopia", "Ethiopia"}, {"eth", "Ethiopia"}, {"et", "Ethiopia"},
+    {"south sudan", "South Sudan"}, {"s. sudan", "South Sudan"}, {"ssd", "South Sudan"}, {"od", "South Sudan"},
+    {"mali", "Mali"}, {"mli", "Mali"}, {"ml", "Mali"},
+    {"dr congo", "DR Congo"}, {"dr congo (zaire)", "DR Congo"}, {"congo (the democratic republic of the)", "DR Congo"},
+    {"democratic republic of the congo", "DR Congo"}, {"democratic republic of congo", "DR Congo"}, {"congo, dem. rep.", "DR Congo"},
+    {"congo, democratic republic", "DR Congo"}, {"drc", "DR Congo"}, {"zaire", "DR Congo"}, {"cod", "DR Congo"}, {"cg", "DR Congo"},
+    {"ukraine", "Ukraine"}, {"ukr", "Ukraine"}, {"up", "Ukraine"},
+    {"iraq", "Iraq"}, {"irq", "Iraq"}, {"iz", "Iraq"},
+    {"pakistan", "Pakistan"}, {"pak", "Pakistan"}, {"pk", "Pakistan"},
+    {"nigeria", "Nigeria"}, {"nga", "Nigeria"}, {"nig", "Nigeria"}, {"ni", "Nigeria"},
+    {"venezuela", "Venezuela"}, {"venezuela, rb", "Venezuela"}, {"bolivarian republic of venezuela", "Venezuela"}, {"ven", "Venezuela"}, {"ve", "Venezuela"},
+    {"sudan", "Sudan"}, {"sdn", "Sudan"}, {"sud", "Sudan"}, {"su", "Sudan"},
+    {"central african republic", "Central African Republic"}, {"car", "Central African Republic"}, {"caf", "Central African Republic"}, {"ct", "Central African Republic"},
+    {"taiwan", "Taiwan"}, {"taiwan, province of china", "Taiwan"}, {"twn", "Taiwan"}, {"tw", "Taiwan"},
+    {"haiti", "Haiti"}, {"hti", "Haiti"}, {"ha", "Haiti"},
+    {"lebanon", "Lebanon"}, {"lbn", "Lebanon"}, {"leb", "Lebanon"}, {"le", "Lebanon"},
+    {"colombia", "Colombia"}, {"col", "Colombia"}, {"co", "Colombia"},
+    {"ecuador", "Ecuador"}, {"ecu", "Ecuador"}, {"ec", "Ecuador"},
+    {"norway", "Norway"}, {"nor", "Norway"}, {"no", "Norway"},
+    {"switzerland", "Switzerland"}, {"che", "Switzerland"}, {"sui", "Switzerland"}, {"sz", "Switzerland"},
+    {"japan", "Japan"}, {"jpn", "Japan"}, {"ja", "Japan"},
+    {"south korea", "South Korea"}, {"korea, south", "South Korea"}, {"korea, rep.", "South Korea"},
+    {"korea (the republic of)", "South Korea"}, {"republic of korea", "South Korea"}, {"kor", "South Korea"}, {"ks", "South Korea"},
+    {"portugal", "Portugal"}, {"prt", "Portugal"}, {"po", "Portugal"},
+    {"uruguay", "Uruguay"}, {"ury", "Uruguay"}, {"uy", "Uruguay"},
+    {"botswana", "Botswana"}, {"bwa", "Botswana"}, {"bc", "Botswana"},
+    {"mongolia", "Mongolia"}, {"mng", "Mongolia"}, {"mg", "Mongolia"},
+    {"canada", "Canada"}, {"can", "Canada"}, {"ca", "Canada"},
+    {"germany", "Germany"}, {"deu", "Germany"}, {"ger", "Germany"}, {"gm", "Germany"},
+    {"afghanistan", "Afghanistan"}, {"afg", "Afghanistan"}, {"af", "Afghanistan"},
+    {"united states", "USA"}, {"united states of america", "USA"}, {"usa", "USA"}, {"us", "USA"},
+    {"mexico", "Mexico"}, {"mex", "Mexico"}, {"mx", "Mexico"},
+    {"brazil", "Brazil"}, {"bra", "Brazil"}, {"br", "Brazil"},
+    {"argentina", "Argentina"}, {"arg", "Argentina"}, {"ar", "Argentina"},
+    {"chile", "Chile"}, {"chl", "Chile"}, {"ci", "Chile"},
+    {"peru", "Peru"}, {"per", "Peru"}, {"pe", "Peru"},
+    {"cuba", "Cuba"}, {"cub", "Cuba"}, {"cu", "Cuba"},
+    {"united kingdom", "United Kingdom"}, {"uk", "United Kingdom"}, {"gbr", "United Kingdom"}, {"gb", "United Kingdom"},
+    {"france", "France"}, {"fra", "France"}, {"fr", "France"},
+    {"russia", "Russia"}, {"russian federation", "Russia"}, {"rus", "Russia"}, {"rs", "Russia"}, {"ru", "Russia"},
+    {"italy", "Italy"}, {"ita", "Italy"}, {"it", "Italy"},
+    {"spain", "Spain"}, {"esp", "Spain"}, {"sp", "Spain"},
+    {"poland", "Poland"}, {"pol", "Poland"}, {"pl", "Poland"},
+    {"netherlands", "Netherlands"}, {"nld", "Netherlands"}, {"nl", "Netherlands"},
+    {"sweden", "Sweden"}, {"swe", "Sweden"}, {"sw", "Sweden"},
+    {"greece", "Greece"}, {"grc", "Greece"}, {"gr", "Greece"},
+    {"china", "China"}, {"chn", "China"}, {"ch", "China"}, {"cn", "China"},
+    {"india", "India"}, {"ind", "India"}, {"in", "India"},
+    {"indonesia", "Indonesia"}, {"idn", "Indonesia"}, {"id", "Indonesia"},
+    {"philippines", "Philippines"}, {"phl", "Philippines"}, {"rp", "Philippines"}, {"ph", "Philippines"},
+    {"australia", "Australia"}, {"aus", "Australia"}, {"as", "Australia"}, {"au", "Australia"},
+    {"new zealand", "New Zealand"}, {"nzl", "New Zealand"}, {"nz", "New Zealand"},
+    {"north korea", "North Korea"}, {"prk", "North Korea"}, {"kn", "North Korea"}, {"korea, north", "North Korea"},
+    {"vietnam", "Vietnam"}, {"vnm", "Vietnam"}, {"vm", "Vietnam"}, {"vn", "Vietnam"},
+    {"thailand", "Thailand"}, {"tha", "Thailand"}, {"th", "Thailand"},
+    {"malaysia", "Malaysia"}, {"mys", "Malaysia"}, {"my", "Malaysia"},
+    {"saudi arabia", "Saudi Arabia"}, {"sau", "Saudi Arabia"}, {"sa", "Saudi Arabia"},
+    {"egypt", "Egypt"}, {"egy", "Egypt"}, {"eg", "Egypt"},
+    {"turkey", "Turkey"}, {"tur", "Turkey"}, {"tu", "Turkey"}, {"tr", "Turkey"}, {"turkiye", "Turkey"},
+    {"iran", "Iran"}, {"irn", "Iran"}, {"ir", "Iran"}, {"islamic republic of iran", "Iran"},
+    {"israel", "Israel"}, {"isr", "Israel"}, {"is", "Israel"}, {"il", "Israel"},
+    {"united arab emirates", "UAE"}, {"are", "UAE"}, {"ae", "UAE"}, {"uae", "UAE"},
+    {"algeria", "Algeria"}, {"dza", "Algeria"}, {"ag", "Algeria"}, {"dz", "Algeria"},
+    {"morocco", "Morocco"}, {"mar", "Morocco"}, {"mo", "Morocco"},
+    {"south africa", "South Africa"}, {"zaf", "South Africa"}, {"sf", "South Africa"}, {"za", "South Africa"},
+    {"kenya", "Kenya"}, {"ken", "Kenya"}, {"ke", "Kenya"},
+    {"uganda", "Uganda"}, {"uga", "Uganda"}, {"ug", "Uganda"},
+    {"angola", "Angola"}, {"ago", "Angola"}, {"ao", "Angola"}
+};
+
+std::string Trim(const std::string& s) {
+    if (s.empty()) return "";
+    size_t first = s.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) return "";
+    size_t last = s.find_last_not_of(" \t\r\n");
+    return s.substr(first, (last - first + 1));
+}
+
+std::string ToLowerCase(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return s;
+}
+
 int main() {
+    SetConsoleOutputCP(CP_UTF8);
+
     // 파일 경로 지정
-    std::string csvPath = "..\\..\\GDELT\\GDELT_Daily_All_Countries.csv";
-    std::string csvPath_ACLED = "..\\..\\ACLED\\Continental\\ACLED_All_Countries.csv";
-    std::string csvPath_Vdem = "..\\..\\V-Dem\\VDemData_All_Countries.csv";
+    std::string csvPath = "..\\..\\GDELT\\GDELT_2013_2024.csv";
+    std::string csvPath_ACLED = "..\\..\\ACLED\\Continental\\ACLED_2013_2024.csv";
+    std::string csvPath_Vdem = "..\\..\\V-Dem\\VDemData_2013_2024.csv";
 
     // ── ACLED 파일 열기 ──────────────────────────────────────
     std::ifstream file_Acled(csvPath_ACLED);
@@ -91,6 +264,10 @@ int main() {
     // ==========================================================
 
     // ── ACLED Preview ─────────────────────────────────────────
+    // 실제 컬럼 순서:
+    //  [0]event_id_cnty [1]event_date [2]year [3]event_type [4]sub_event_type
+    //  [5]interaction   [6]fatalities [7]latitude [8]longitude
+    //  [9]country       [10]country_std [11]group
     std::string line_Acled;
 
     if (std::getline(file_Acled, line_Acled)) {
@@ -98,7 +275,6 @@ int main() {
         std::cout << " Header Preview - ACLED \n";
         std::cout << "========================================\n";
 
-        // ✅ ParseCSVLine 사용: 따옴표 안 쉼표에도 안전
         std::vector<std::string> headers = ParseCSVLine(line_Acled);
         for (int i = 0; i < (int)headers.size(); ++i) {
             std::cout << "[" << i << "] " << headers[i] << "  |  ";
@@ -165,13 +341,12 @@ int main() {
 
     // VDem Preview
     std::string line_Vdem;
-    
+
     if (std::getline(file_Vdem, line_Vdem)) {
         std::cout << "========================================\n";
         std::cout << " Header Preview - V-Dem \n";
         std::cout << "========================================\n";
 
-        // ✅ ParseCSVLine 사용: 따옴표 안 쉼표에도 안전
         std::vector<std::string> headers = ParseCSVLine(line_Vdem);
         for (int i = 0; i < (int)headers.size(); ++i) {
             std::cout << "[" << i << "] " << headers[i] << "  |  ";
@@ -204,17 +379,16 @@ int main() {
     std::vector<AcledPoint> rawData_Acled;
     std::vector<VDemPoint> rawData_Vdem;
 
-    // 결측치 카운트 변수
-    int GdeltmissingValue = 0;
-    int AcledmissingValue = 0;
-    int VdemmissingValue = 0;
+    std::map<std::string, std::map<std::string, int>> acledMissingMap;
+    std::map<std::string, std::map<std::string, int>> vdemMissingMap;
+    std::map<std::string, std::map<std::string, int>> gdeltMissingMap;
 
     // ==========================================================
     //  Loading 부분
     // ==========================================================
 
     // ── GDELT Loading ─────────────────────────────────────────
-    /*std::getline(file, line); // Header skip
+    std::getline(file, line); // Header skip
 
     std::cout << "Loading GDELT..." << std::endl;
 
@@ -233,11 +407,42 @@ int main() {
                 pt.countryCode = row[1];
                 pt.eventCode = row[2];
 
-                if (!row[3].empty()) pt.goldstein = std::stod(row[3]);
-                if (!row[4].empty()) pt.avgTone = std::stod(row[4]);
-                if (!row[5].empty()) pt.totalMentions = std::stoi(row[5]);
-                if (!row[6].empty()) pt.totalSources = std::stoi(row[6]);
-                if (!row[7].empty()) pt.totalArticles = std::stoi(row[7]);
+                std::string c_name = pt.countryCode.empty() ? "UNKNOWN" : pt.countryCode;
+
+                // 1. AvgGoldstein
+                try {
+                    if (!row[3].empty()) pt.goldstein = std::stod(row[3]);
+                    else gdeltMissingMap[c_name]["AvgGoldstein"]++;
+                }
+                catch (...) { gdeltMissingMap[c_name]["AvgGoldstein"]++; }
+
+                // 2. AvgTone
+                try {
+                    if (!row[4].empty()) pt.avgTone = std::stod(row[4]);
+                    else gdeltMissingMap[c_name]["AvgTone"]++;
+                }
+                catch (...) { gdeltMissingMap[c_name]["AvgTone"]++; }
+
+                // 3. TotalMentions
+                try {
+                    if (!row[5].empty()) pt.totalMentions = std::stoi(row[5]);
+                    else gdeltMissingMap[c_name]["TotalMentions"]++;
+                }
+                catch (...) { gdeltMissingMap[c_name]["TotalMentions"]++; }
+
+                // 4. TotalSources
+                try {
+                    if (!row[6].empty()) pt.totalSources = std::stoi(row[6]);
+                    else gdeltMissingMap[c_name]["TotalSources"]++;
+                }
+                catch (...) { gdeltMissingMap[c_name]["TotalSources"]++; }
+
+                // 5. TotalArticles
+                try {
+                    if (!row[7].empty()) pt.totalArticles = std::stoi(row[7]);
+                    else gdeltMissingMap[c_name]["TotalArticles"]++;
+                }
+                catch (...) { gdeltMissingMap[c_name]["TotalArticles"]++; }
 
                 rawData.push_back(pt);
             }
@@ -249,11 +454,12 @@ int main() {
 
     file.close();
     std::cout << "Load GDELT Complete! (" << rawData.size() << " points)" << std::endl;
-    */
 
     // ── ACLED Loading ─────────────────────────────────────────
-    // ✅ 버그2 수정: Preview 단계에서 이미 헤더 + 데이터 3줄을 읽어버렸으므로
-    //    파일을 닫고 다시 열어 헤더를 정확히 1번만 스킵합니다.
+    // 실제 컬럼 순서(헤더 기준):
+    //  [0]event_id_cnty  [1]event_date  [2]year       [3]event_type
+    //  [4]sub_event_type [5]interaction [6]fatalities  [7]latitude
+    //  [8]longitude      [9]country     [10]country_std [11]group
     file_Acled.close();
     file_Acled.open(csvPath_ACLED);
     if (!file_Acled.is_open()) {
@@ -265,67 +471,48 @@ int main() {
     std::cout << "Loading ACLED..." << std::endl;
 
     while (std::getline(file_Acled, line_Acled)) {
-        // ✅ 버그1 수정: 따옴표 인식 CSV 파서 사용
         std::vector<std::string> row = ParseCSVLine(line_Acled);
 
-        if (row.size() > 12) {
+        // [11]group 까지 존재하는지 확인 (최소 12개 컬럼)
+        if (row.size() > 11) {
             AcledPoint pt;
 
-            // 문자열 필드
-            pt.week = row[0];
-            pt.country = row[2];
-            pt.eventType = row[4];
+            // ── 문자열 필드 ──────────────────────────────────
+            pt.week = row[1];   // event_date
+            pt.eventType = row[3];   // event_type
+            pt.country = row[9];   // country
 
-            // 숫자 필드: 개별 try-catch로 한 줄 전체를 버리지 않음
-            // 1. 발생 건수 (EVENTS)
+            std::string c_name = pt.country.empty() ? "UNKNOWN" : pt.country;
+
+            // ── 숫자 필드: 개별 try-catch ────────────────────
+
+            // 1. FATALITIES [6]
             try {
-                if (!row[6].empty()) pt.events = std::stoi(row[6]);
-                else AcledmissingValue++;
+                if (!row[6].empty()) pt.fatalities = std::stoi(row[6]);
+                else acledMissingMap[c_name]["FATALITIES"]++;
             }
-            catch (...) { AcledmissingValue++; }
+            catch (...) { acledMissingMap[c_name]["FATALITIES"]++; }
 
-            // 2. 사망자 수 (FATALITIES)
+            // 2. LATITUDE [7]
             try {
-                if (!row[7].empty()) pt.fatalities = std::stoi(row[7]);
-                else AcledmissingValue++;
+                if (!row[7].empty()) pt.latitude = std::stod(row[7]);
+                else acledMissingMap[c_name]["LATITUDE"]++;
             }
-            catch (...) { AcledmissingValue++; }
+            catch (...) { acledMissingMap[c_name]["LATITUDE"]++; }
 
-            // 3. 노출 인구 (POPULATION_EXPOSURE) - 누락되었던 부분 추가!
+            // 3. LONGITUDE [8]
             try {
-                if (!row[8].empty()) pt.populationExposure = std::stoi(row[8]);
-                else AcledmissingValue++;
+                if (!row[8].empty()) pt.longitude = std::stod(row[8]);
+                else acledMissingMap[c_name]["LONGITUDE"]++;
             }
-            catch (...) { AcledmissingValue++; }
+            catch (...) { acledMissingMap[c_name]["LONGITUDE"]++; }
 
-            // 4. 위도 (LATITUDE)
-            try {
-                if (!row[11].empty()) pt.latitude = std::stod(row[11]);
-                else AcledmissingValue++;
-            }
-            catch (...) { AcledmissingValue++; }
-
-            // 5. 경도 (LONGITUDE)
-            try {
-                if (!row[12].empty()) pt.longitude = std::stod(row[12]);
-                else AcledmissingValue++;
-            }
-            catch (...) { AcledmissingValue++; }
-
-            // 위도·경도가 정상 범위일 때만 저장
-            if (pt.latitude != 0.0 && pt.longitude != 0.0) {
-                rawData_Acled.push_back(pt);
-            }
+            rawData_Acled.push_back(pt);
         }
     }
 
     file_Acled.close();
-
-    // ✅ 로드된 점 개수 확인용 디버그 출력 (0이면 CSV 컬럼 인덱스 재확인 필요)
     std::cout << "Load ACLED Complete! (" << rawData_Acled.size() << " points)" << std::endl;
-    std::cout << "Missing Value ACLED : " << AcledmissingValue << std::endl;
-
-
 
     // ── V-Dem Loading ─────────────────────────────────────────
     file_Vdem.close();
@@ -339,112 +526,231 @@ int main() {
     std::cout << "Loading V-Dem..." << std::endl;
 
     while (std::getline(file_Vdem, line_Vdem)) {
-        // ✅ 버그1 수정: 따옴표 인식 CSV 파서 사용
         std::vector<std::string> row = ParseCSVLine(line_Vdem);
 
         if (row.size() > 12) {
             VDemPoint pt;
 
-            // 1. 문자열 (그냥 넣음)
             pt.country_name = row[0];
             pt.country_text_id = row[1];
 
-            // 2. 숫자는 모조리 try-catch로 개별 방어
-            try { if (!row[2].empty()) pt.year = std::stoi(row[2]); }
-            catch (...) {}
-            try { if (!row[3].empty()) pt.v2elpeace = std::stod(row[3]); }
-            catch (...) {}
-            try { if (!row[4].empty()) pt.v2x_rule = std::stod(row[4]); }
-            catch (...) {}
-            try { if (!row[5].empty()) pt.v2x_clphy = std::stod(row[5]); }
-            catch (...) {}
-            try { if (!row[6].empty()) pt.e_pt_coup = std::stod(row[6]); }
-            catch (...) {}
-            try { if (!row[7].empty()) pt.e_civil_war = std::stod(row[7]); }
-            catch (...) {} // 비어있어도 무사 통과
-            try { if (!row[8].empty()) pt.v2x_libdem = std::stod(row[8]); }
-            catch (...) {}
-            try { if (!row[9].empty()) pt.v2x_corr = std::stod(row[9]); }
-            catch (...) {}
-            try { if (!row[10].empty()) pt.v2x_veracc = std::stod(row[10]); }
-            catch (...) {}
-            try { if (!row[11].empty()) pt.v2xcs_ccsi = std::stod(row[11]); }
-            catch (...) {}
-            try { if (!row[12].empty()) pt.v2x_polyarchy = std::stod(row[12]); }
-            catch (...) {}
-            try { if (!row[13].empty()) pt.v2elintim = std::stod(row[13]); }
-            catch (...) {}
+            std::string c_name = pt.country_name.empty() ? "UNKNOWN" : pt.country_name;
+
+            try {
+                if (!row[2].empty()) pt.year = std::stoi(row[2]);
+                else vdemMissingMap[c_name]["year"]++;
+            }
+            catch (...) { vdemMissingMap[c_name]["year"]++; }
+
+            try {
+                if (!row[3].empty()) pt.v2elpeace = std::stod(row[3]);
+                else vdemMissingMap[c_name]["v2elpeace"]++;
+            }
+            catch (...) { vdemMissingMap[c_name]["v2elpeace"]++; }
+
+            try {
+                if (!row[4].empty()) pt.v2x_rule = std::stod(row[4]);
+                else vdemMissingMap[c_name]["v2x_rule"]++;
+            }
+            catch (...) { vdemMissingMap[c_name]["v2x_rule"]++; }
+
+            try {
+                if (!row[5].empty()) pt.v2x_clphy = std::stod(row[5]);
+                else vdemMissingMap[c_name]["v2x_clphy"]++;
+            }
+            catch (...) { vdemMissingMap[c_name]["v2x_clphy"]++; }
+
+            try {
+                if (!row[6].empty()) pt.e_pt_coup = std::stod(row[6]);
+                else vdemMissingMap[c_name]["e_pt_coup"]++;
+            }
+            catch (...) { vdemMissingMap[c_name]["e_pt_coup"]++; }
+
+            try {
+                if (!row[7].empty()) pt.e_civil_war = std::stod(row[7]);
+                else vdemMissingMap[c_name]["e_civil_war"]++;
+            }
+            catch (...) { vdemMissingMap[c_name]["e_civil_war"]++; }
+
+            try {
+                if (!row[8].empty()) pt.v2x_libdem = std::stod(row[8]);
+                else vdemMissingMap[c_name]["v2x_libdem"]++;
+            }
+            catch (...) { vdemMissingMap[c_name]["v2x_libdem"]++; }
+
+            try {
+                if (!row[9].empty()) pt.v2x_corr = std::stod(row[9]);
+                else vdemMissingMap[c_name]["v2x_corr"]++;
+            }
+            catch (...) { vdemMissingMap[c_name]["v2x_corr"]++; }
+
+            try {
+                if (!row[10].empty()) pt.v2x_veracc = std::stod(row[10]);
+                else vdemMissingMap[c_name]["v2x_veracc"]++;
+            }
+            catch (...) { vdemMissingMap[c_name]["v2x_veracc"]++; }
+
+            try {
+                if (!row[11].empty()) pt.v2xcs_ccsi = std::stod(row[11]);
+                else vdemMissingMap[c_name]["v2xcs_ccsi"]++;
+            }
+            catch (...) { vdemMissingMap[c_name]["v2xcs_ccsi"]++; }
+
+            try {
+                if (!row[12].empty()) pt.v2x_polyarchy = std::stod(row[12]);
+                else vdemMissingMap[c_name]["v2x_polyarchy"]++;
+            }
+            catch (...) { vdemMissingMap[c_name]["v2x_polyarchy"]++; }
+
+            try {
+                if (!row[13].empty()) pt.v2elintim = std::stod(row[13]);
+                else vdemMissingMap[c_name]["v2elintim"]++;
+            }
+            catch (...) { vdemMissingMap[c_name]["v2elintim"]++; }
 
             rawData_Vdem.push_back(pt);
         }
     }
 
     file_Vdem.close();
-
-    // ✅ 로드된 점 개수 확인용 디버그 출력 (0이면 CSV 컬럼 인덱스 재확인 필요)
     std::cout << "Load V-Dem Complete! (" << rawData_Vdem.size() << " points)" << std::endl;
 
+    // ==========================================================
+    //  결측치(Missing Values) 국가별 / 변수별 최종 출력 보고서
+    // ==========================================================
+    std::cout << "\n========================================\n";
+    std::cout << " ACLED 결측치 통계 \n";
+    std::cout << "========================================\n";
+    if (acledMissingMap.empty()) {
+        std::cout << " -> 발견된 결측치 없음.\n";
+    }
+    else {
+        for (const auto& countryPair : acledMissingMap) {
+            std::cout << "[" << countryPair.first << "] ";
+            bool first = true;
+            for (const auto& varPair : countryPair.second) {
+                if (!first) std::cout << ", ";
+                std::cout << varPair.first << ": " << varPair.second;
+                first = false;
+            }
+            std::cout << "\n";
+        }
+    }
+
+    std::cout << "\n========================================\n";
+    std::cout << " V-Dem 결측치 통계 \n";
+    std::cout << "========================================\n";
+    if (vdemMissingMap.empty()) {
+        std::cout << " -> 발견된 결측치 없음.\n";
+    }
+    else {
+        for (const auto& countryPair : vdemMissingMap) {
+            std::cout << "[" << countryPair.first << "] ";
+            bool first = true;
+            for (const auto& varPair : countryPair.second) {
+                if (!first) std::cout << ", ";
+                std::cout << varPair.first << ": " << varPair.second;
+                first = false;
+            }
+            std::cout << "\n";
+        }
+    }
+
+    std::cout << "\n========================================\n";
+    std::cout << " GDELT 결측치 통계 \n";
+    std::cout << "========================================\n";
+    if (gdeltMissingMap.empty()) {
+        std::cout << " -> 발견된 결측치 없음.\n";
+    }
+    else {
+        for (const auto& countryPair : gdeltMissingMap) {
+            std::string code = countryPair.first;
+            std::string lowerCode = ToLowerCase(code);
+            if (ALIAS_MAP.find(lowerCode) != ALIAS_MAP.end()) {
+                std::cout << "[" << code << ":" << ALIAS_MAP[lowerCode] << "] ";
+            }
+            else {
+                std::cout << "[" << code << "] ";
+            }
+
+            bool first = true;
+            for (const auto& varPair : countryPair.second) {
+                if (!first) std::cout << ", ";
+                std::cout << varPair.first << ": " << varPair.second;
+                first = false;
+            }
+            std::cout << "\n";
+        }
+    }
+
+    std::cout << "========================================\n\n";
+
+    std::cout << "Load ACLED Complete! (" << rawData_Acled.size() << " points)" << std::endl;
+    std::cout << "Load V-Dem Complete! (" << rawData_Vdem.size() << " points)" << std::endl;
+
+    // ==========================================================
+    // 주요 수치형 변수에 대한 MAD 기반 통계적 이상치 탐지
+    // ==========================================================
+    std::cout << "\n[데이터 이상치(Outlier) 탐지 시작]\n";
+
+    // 1. GDELT: AvgGoldstein, TotalArticles
+    std::vector<double> gdelt_goldstein, gdelt_articles;
+    for (const auto& pt : rawData) {
+        gdelt_goldstein.push_back(pt.goldstein);
+        gdelt_articles.push_back(pt.totalArticles);
+    }
+    DetectOutliersMAD(gdelt_goldstein, "GDELT: AvgGoldstein", 3.0);
+    DetectOutliersMAD(gdelt_articles, "GDELT: TotalArticles", 3.0);
+
+    // 2. ACLED: fatalities 검사
+    if (!rawData_Acled.empty()) {
+        std::vector<double> acled_fatalities;
+        for (const auto& pt : rawData_Acled) {
+            acled_fatalities.push_back(pt.fatalities);
+        }
+        DetectOutliersMAD(acled_fatalities, "ACLED: Fatalities", 3.0);
+    }
 
     // ==========================================================
     //  파이프라인 가동
     // ==========================================================
-    // GEDELT
-    /*
-    auto view1 = ShowHistogram(rawData, 50, -10.0, 10.0);
-    auto view2 = ShowBoxPlot(rawData, "Goldstein Scale");
-    auto view3 = ShowScatterPlot(rawData, "Goldstein Scale");
-    auto view4 = ShowLineChart(rawData, "Average Tone");
-    auto view_map = ShowScatterPlot(rawData_Acled);
-    */
-    
-    // V-Dem에 대한 시각화(그룹별로 창을 나눠 방향키로 탭바꾸기)
-    //  Group A: 심각한 분쟁 및 위기 국가 (High Conflict)
     std::vector<std::string> codesA = { "SYR", "YEM", "SOM", "MMR", "ETH", "SSD", "MLI", "COD", "UKR", "IRQ" };
     std::vector<std::string> namesA = { "Syria", "Yemen", "Somalia", "Myanmar", "Ethiopia", "South Sudan", "Mali", "DR Congo", "Ukraine", "Iraq" };
 
-    //  Group B: 중간 단계 및 잠재적 불안정 국가 (At-Risk)
     std::vector<std::string> codesB = { "PAK", "NGA", "VEN", "SDN", "CAF", "TWN", "HTI", "LBN", "COL", "ECU" };
     std::vector<std::string> namesB = { "Pakistan", "Nigeria", "Venezuela", "Sudan", "Central African Rep", "Taiwan", "Haiti", "Lebanon", "Colombia", "Ecuador" };
 
-    //  Group C: 안정적인 민주주의 국가 (Stable)
     std::vector<std::string> codesC = { "NOR", "CHE", "JPN", "KOR", "PRT", "URY", "BWA", "MNG", "CAN", "DEU" };
     std::vector<std::string> namesC = { "Norway", "Switzerland", "Japan", "South Korea", "Portugal", "Uruguay", "Botswana", "Mongolia", "Canada", "Germany" };
 
-    // 3개의 독립적인 상호작용 창 생성 - V-DEM
     auto viewA = ShowInteractiveGroupChart(rawData_Vdem, "[Group A]", codesA, namesA);
     auto viewB = ShowInteractiveGroupChart(rawData_Vdem, "[Group B]", codesB, namesB);
     auto viewC = ShowInteractiveGroupChart(rawData_Vdem, "[Group C]", codesC, namesC);
 
-    // 미디어 톤 급락 - GDELT
-    auto view_tone_sy = ShowToneDropChart(rawData, "SY", 14); // 시리아
-    auto view_tone_bm = ShowToneDropChart(rawData, "BM", 14); // 미얀마
-    auto view_tone_su = ShowToneDropChart(rawData, "SU", 14); // 수단 추가
-    auto view_tone_et = ShowToneDropChart(rawData, "ET", 14); // 에티오피아 추가
+    auto view_tone_sy = ShowToneDropChart(rawData, "SY", 14);
+    auto view_tone_bm = ShowToneDropChart(rawData, "BM", 14);
+    auto view_tone_su = ShowToneDropChart(rawData, "SU", 14);
+    auto view_tone_et = ShowToneDropChart(rawData, "ET", 14);
 
-    // 데스 크로스 확인 - GDELT
     auto view_deathcross_sy = ShowDeathCrossChart(rawData, "SY");
     auto view_deathcross_bm = ShowDeathCrossChart(rawData, "BM");
     auto view_deathcross_su = ShowDeathCrossChart(rawData, "SU");
     auto view_deathcross_et = ShowDeathCrossChart(rawData, "ET");
 
-    // 분쟁 데이터가 가장 풍부한 시리아(Syria)를 예시로 에스컬레이션 속도 측정 - ACLED
     auto view_esc = ShowEscalationChart(rawData_Acled, "Syria");
-    auto view_esc_mmr = ShowEscalationChart(rawData_Acled, "Myanmar");   // 쿠데타발 급가속
-    auto view_esc_sdn = ShowEscalationChart(rawData_Acled, "Sudan");     // 군벌 간 전면전 폭발
-    auto view_esc_eth = ShowEscalationChart(rawData_Acled, "Ethiopia");  // 지역 갈등의 전쟁화
+    auto view_esc_mmr = ShowEscalationChart(rawData_Acled, "Myanmar");
+    auto view_esc_sdn = ShowEscalationChart(rawData_Acled, "Sudan");
+    auto view_esc_eth = ShowEscalationChart(rawData_Acled, "Ethiopia");
 
-    auto view_scatterview = ShowScatterPlot(rawData_Acled); // 위도, 경도 지도 그리기 
+    auto view_scatterview = ShowScatterPlot(rawData_Acled);
 
-    // 🌟 보고 싶은 X축 변수들의 이름을 리스트로 묶습니다.
     std::vector<std::string> targetXVars = {
-        "EVENTS",                // 발생 건수 (규모)
-        "POPULATION_EXPOSURE",   // 노출 인구 (밀집도 리스크)
-        "EVENT_TYPE",            // 상위 사건 분류
-        "SUB_EVENT_TYPE",        // 상세 사건 분류 (강력 추천)
-        "DISORDER_TYPE"          // 정치적 폭력 성격
+        "EVENTS",
+        "EVENT_TYPE",
+        "SUB_EVENT_TYPE",
+        "DISORDER_TYPE"
     };
 
-    // 🌟 데이터와 리스트를 함께 던져서 인터랙티브 뷰어를 호출합니다.
     auto view_corr = ShowInteractiveScatterPlot(rawData_Acled, targetXVars);
 
     if (view_esc != nullptr) {

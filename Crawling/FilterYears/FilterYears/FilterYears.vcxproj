@@ -21,8 +21,8 @@
   <PropertyGroup Label="Globals">
     <VCProjectVersion>18.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
-    <ProjectGuid>{a9ebe02f-b4de-4bbf-bca8-229239d1d7d0}</ProjectGuid>
-    <RootNamespace>ViewerCpp</RootNamespace>
+    <ProjectGuid>{0337a9f5-caa9-4b70-a99b-a56f6ef55d00}</ProjectGuid>
+    <RootNamespace>FilterYears</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -70,12 +70,6 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
-  <PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <VcpkgTriplet>x64-windows</VcpkgTriplet>
-  </PropertyGroup>
-  <PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <VcpkgTriplet>x64-windows</VcpkgTriplet>
-  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -117,7 +111,6 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>C:\vcpkg\installed\x64-windows\include;C:\vcpkg\installed\x64-windows\include\vtk-9.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
@@ -137,7 +130,6 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>C:\vcpkg\installed\x64-windows\include;C:\vcpkg\installed\x64-windows\include\vtk-9.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
@@ -149,32 +141,7 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="AcledData.h" />
-    <ClInclude Include="BoxPlotViewer.h" />
-    <ClInclude Include="DeathCrossViewer.h" />
-    <ClInclude Include="EscalationViewer.h" />
-    <ClInclude Include="GdeltData.h" />
-    <ClInclude Include="HistogramViewer.h" />
-    <ClInclude Include="InteractiveGroupViewer.h" />
-    <ClInclude Include="LineChartViewer.h" />
-    <ClInclude Include="MultiLineChartViewer.h" />
-    <ClInclude Include="preview.h" />
-    <ClInclude Include="ScatterViewer.h" />
-    <ClInclude Include="ToneDropViewer.h" />
-    <ClInclude Include="VDemData.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="BoxPlotViewer.cpp" />
-    <ClCompile Include="DeathCrossViewer.cpp" />
-    <ClCompile Include="EscalationViewer.cpp" />
-    <ClCompile Include="HistogramViewer.cpp" />
-    <ClCompile Include="InteractiveGroupViewer.cpp" />
-    <ClCompile Include="LineChartViewer.cpp" />
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="MultiLineChartViewer.cpp" />
-    <ClCompile Include="preview.cpp" />
-    <ClCompile Include="ScatterViewer.cpp" />
-    <ClCompile Include="ToneDropViewer.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
