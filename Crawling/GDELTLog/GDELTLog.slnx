@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="GDELTLog/GDELTLog.vcxproj" Id="7185d439-e1db-4a60-81b6-5bf92c0c20a3" />
+</Solution>

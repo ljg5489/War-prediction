@@ -12,3 +12,4 @@ vtkSmartPointer<vtkContextView> ShowScatterPlot(const std::vector<AcledPoint>& d
 // 3. ACLED 단일 변수 상관성 산점도 (Y: Fatalities 고정)
 vtkSmartPointer<vtkContextView> ShowScatterPlot(const std::vector<AcledPoint>& data, const std::string& xVarName);
 vtkSmartPointer<vtkContextView> ShowInteractiveScatterPlot(const std::vector<AcledPoint>& data, const std::vector<std::string>& xVarNames);
+vtkSmartPointer<vtkContextView> ShowOutlierScatterPlot(const std::vector<double>& data, const std::string& variableName, double threshold = 3.0);

@@ -8,3 +8,4 @@
 
 vtkSmartPointer<vtkContextView> ShowBoxPlot(const std::vector<GdeltPoint>& data, const std::string& columnName);
 vtkSmartPointer<vtkContextView> ShowBoxPlot_Acled(const std::vector<AcledPoint>& data, const std::string& columnName);
+vtkSmartPointer<vtkContextView> ShowBoxPlot_Fatalities(const std::vector<AcledPoint>& data, const std::string& columnName);

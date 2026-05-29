@@ -91,7 +91,7 @@ vtkSmartPointer<vtkContextView> ShowDeathCrossChart(
 
     // 4. 뷰어 및 렌더링 세팅
     vtkSmartPointer<vtkContextView> view = vtkSmartPointer<vtkContextView>::New();
-    view->GetRenderer()->SetBackground(0.1, 0.12, 0.16); // 다크 모드
+    view->GetRenderer()->SetBackground(1.0, 1.0, 1.0); 
     view->GetRenderWindow()->SetSize(900, 500);
     view->GetRenderWindow()->SetWindowName(("Death Cross - " + targetCountryCode).c_str());
 

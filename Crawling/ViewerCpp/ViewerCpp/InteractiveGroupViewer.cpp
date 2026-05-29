@@ -113,7 +113,7 @@ vtkSmartPointer<vtkContextView> ShowInteractiveGroupChart(
     table->AddColumn(arrCorr);
 
     vtkSmartPointer<vtkContextView> view = vtkSmartPointer<vtkContextView>::New();
-    view->GetRenderer()->SetBackground(0.12, 0.12, 0.16); // 다크 모드
+    view->GetRenderer()->SetBackground(1.0, 1.0, 1.0); // 다크 모드
     view->GetRenderWindow()->SetSize(800, 500);
     view->GetRenderWindow()->SetWindowName(groupName.c_str());
 

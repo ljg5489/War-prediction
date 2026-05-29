@@ -85,7 +85,7 @@ vtkSmartPointer<vtkContextView> ShowToneDropChart(
 
     // 5. 뷰어 및 렌더링 세팅
     vtkSmartPointer<vtkContextView> view = vtkSmartPointer<vtkContextView>::New();
-    view->GetRenderer()->SetBackground(0.08, 0.1, 0.14); // 심해 다크 모드
+    view->GetRenderer()->SetBackground(1.0, 1.0, 1.0); // 심해 다크 모드
     view->GetRenderWindow()->SetSize(1000, 500); // 가로로 긴 시계열 최적화 비율
     view->GetRenderWindow()->SetWindowName(("Media Tone Drop - " + targetCountryCode).c_str());
 

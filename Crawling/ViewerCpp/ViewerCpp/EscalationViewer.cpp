@@ -108,7 +108,7 @@ vtkSmartPointer<vtkContextView> ShowEscalationChart(const std::vector<AcledPoint
 
     // 5. 뷰어 및 창 렌더링 세팅
     vtkSmartPointer<vtkContextView> view = vtkSmartPointer<vtkContextView>::New();
-    view->GetRenderer()->SetBackground(0.1, 0.12, 0.16);
+    view->GetRenderer()->SetBackground(1.0, 1.0, 1.0);
     view->GetRenderWindow()->SetSize(900, 500);
 
     std::string windowTitle = "Escalation Velocity - " + targetCountry;

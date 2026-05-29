@@ -115,6 +115,19 @@ void FilterDataset(const std::string& inputPath, const std::string& outputPath, 
 int main() {
     SetConsoleOutputCP(CP_UTF8);
 
+    /*
+    std::ifstream checkFile("..\\..\\ACLED\\Continental\\ACLED_All_Countries.csv");
+    std::string headerLine;
+    if (std::getline(checkFile, headerLine)) {
+        std::vector<std::string> headers = ParseCSVLine(headerLine);
+        std::cout << "=== CSV 컬럼 인덱스 확인 ===\n";
+        for (int i = 0; i < headers.size(); ++i) {
+            std::cout << "[" << i << "] " << headers[i] << "\n";
+        }
+    }
+    checkFile.close();
+    */
+
     // =========================================================
     // 📂 파일 경로 설정 (원본 파일과 저장될 새 파일의 경로를 맞춰주세요)
     // =========================================================
@@ -136,7 +149,7 @@ int main() {
     //FilterDataset(vdemIn, vdemOut, "V-Dem", 2, false);
 
     // 2. ACLED 필터링 (컬럼 인덱스 2번: 'year')
-    FilterDataset(acledIn, acledOut, "ACLED", 2, false);
+    FilterDataset(acledIn, acledOut, "ACLED", 0, true);
 
     // 3. GDELT 필터링 (컬럼 인덱스 0번: 'SQLDATE', GDELT 특수 파싱 적용)
     //FilterDataset(gdeltIn, gdeltOut, "GDELT", 0, true);

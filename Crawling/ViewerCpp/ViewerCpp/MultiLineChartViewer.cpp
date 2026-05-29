@@ -52,10 +52,10 @@ vtkSmartPointer<vtkContextView> ShowVDemMultiLine(const std::vector<VDemPoint>& 
 
     // ── 뷰 & 창 설정 ──
     vtkSmartPointer<vtkContextView> view = vtkSmartPointer<vtkContextView>::New();
-    view->GetRenderer()->SetBackground(0.1, 0.1, 0.15); // 다크 모드
+    view->GetRenderer()->SetBackground(1.0, 1.0, 1.0); // 다크 모드
     view->GetRenderWindow()->SetSize(1000, 600);
     view->GetRenderWindow()->SetWindowName((targetCountry + " - V-Dem Multi-Line Chart").c_str());
-
+    
     vtkSmartPointer<vtkChartXY> chart = vtkSmartPointer<vtkChartXY>::New();
     view->GetScene()->AddItem(chart);
     chart->SetShowLegend(true); // 🌟 선이 여러 개이므로 범례(Legend) 켜기

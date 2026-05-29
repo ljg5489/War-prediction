@@ -21,6 +21,8 @@
 
 #include <vtkRenderWindowInteractor.h>
 #include <vtkAutoInit.h>
+#include <vtkPen.h>
+#include <vtkAxis.h>
 
 VTK_MODULE_INIT(vtkRenderingOpenGL2);
 VTK_MODULE_INIT(vtkInteractionStyle);
@@ -233,9 +235,9 @@ int main() {
     SetConsoleOutputCP(CP_UTF8);
 
     // 파일 경로 지정
-    std::string csvPath = "..\\..\\GDELT\\GDELT_2013_2024.csv";
+    std::string csvPath = "..\\..\\GDELT\\GDELT_2013_2024_Cleaned.csv";
     std::string csvPath_ACLED = "..\\..\\ACLED\\Continental\\ACLED_2013_2024.csv";
-    std::string csvPath_Vdem = "..\\..\\V-Dem\\VDemData_2013_2024.csv";
+    std::string csvPath_Vdem = "..\\..\\V-Dem\\VDemData_2013_2024_Cleaned.csv";
 
     // ── ACLED 파일 열기 ──────────────────────────────────────
     std::ifstream file_Acled(csvPath_ACLED);
@@ -456,10 +458,6 @@ int main() {
     std::cout << "Load GDELT Complete! (" << rawData.size() << " points)" << std::endl;
 
     // ── ACLED Loading ─────────────────────────────────────────
-    // 실제 컬럼 순서(헤더 기준):
-    //  [0]event_id_cnty  [1]event_date  [2]year       [3]event_type
-    //  [4]sub_event_type [5]interaction [6]fatalities  [7]latitude
-    //  [8]longitude      [9]country     [10]country_std [11]group
     file_Acled.close();
     file_Acled.open(csvPath_ACLED);
     if (!file_Acled.is_open()) {
@@ -473,39 +471,43 @@ int main() {
     while (std::getline(file_Acled, line_Acled)) {
         std::vector<std::string> row = ParseCSVLine(line_Acled);
 
-        // [11]group 까지 존재하는지 확인 (최소 12개 컬럼)
-        if (row.size() > 11) {
+        // ✅ 수정: 새로운 헤더는 최소 13개 컬럼(인덱스 0~12)을 가집니다.
+        if (row.size() > 12) {
             AcledPoint pt;
 
-            // ── 문자열 필드 ──────────────────────────────────
-            pt.week = row[1];   // event_date
-            pt.eventType = row[3];   // event_type
-            pt.country = row[9];   // country
+            // ── 문자열 필드 (새로운 인덱스 적용) ─────────────────────────
+            pt.week = row[0];          // [0] WEEK
+            pt.country = row[2];       // [2] COUNTRY
+            pt.eventType = row[4];     // [4] EVENT_TYPE
 
             std::string c_name = pt.country.empty() ? "UNKNOWN" : pt.country;
 
-            // ── 숫자 필드: 개별 try-catch ────────────────────
+            // ── 숫자 필드: 개별 try-catch (새로운 인덱스 적용) ───────────
 
-            // 1. FATALITIES [6]
+            // 1. FATALITIES [7]
             try {
-                if (!row[6].empty()) pt.fatalities = std::stoi(row[6]);
+                if (!row[7].empty()) pt.fatalities = std::stoi(row[7]);
                 else acledMissingMap[c_name]["FATALITIES"]++;
             }
             catch (...) { acledMissingMap[c_name]["FATALITIES"]++; }
 
-            // 2. LATITUDE [7]
+            // 2. LATITUDE (CENTROID_LATITUDE) [11]
             try {
-                if (!row[7].empty()) pt.latitude = std::stod(row[7]);
+                if (!row[11].empty()) pt.latitude = std::stod(row[11]);
                 else acledMissingMap[c_name]["LATITUDE"]++;
             }
             catch (...) { acledMissingMap[c_name]["LATITUDE"]++; }
 
-            // 3. LONGITUDE [8]
+            // 3. LONGITUDE (CENTROID_LONGITUDE) [12]
             try {
-                if (!row[8].empty()) pt.longitude = std::stod(row[8]);
+                if (!row[12].empty()) pt.longitude = std::stod(row[12]);
                 else acledMissingMap[c_name]["LONGITUDE"]++;
             }
             catch (...) { acledMissingMap[c_name]["LONGITUDE"]++; }
+
+            // (선택) AcledPoint 구조체에 events 필드가 있다면 [6]번 인덱스로 파싱
+            // try { if (!row[6].empty()) pt.events = std::stoi(row[6]); } catch (...) {}
+            // try { if (!row[8].empty()) pt.populationExposure = std::stod(row[8]); } catch (...) {}
 
             rawData_Acled.push_back(pt);
         }
@@ -528,7 +530,8 @@ int main() {
     while (std::getline(file_Vdem, line_Vdem)) {
         std::vector<std::string> row = ParseCSVLine(line_Vdem);
 
-        if (row.size() > 12) {
+        // ✅ 수정 포인트 1: 2개의 열이 삭제되었으므로, 최소 12개(인덱스 0~11)로 변경
+        if (row.size() > 11) {
             VDemPoint pt;
 
             pt.country_name = row[0];
@@ -560,50 +563,43 @@ int main() {
             }
             catch (...) { vdemMissingMap[c_name]["v2x_clphy"]++; }
 
-            try {
-                if (!row[6].empty()) pt.e_pt_coup = std::stod(row[6]);
-                else vdemMissingMap[c_name]["e_pt_coup"]++;
-            }
-            catch (...) { vdemMissingMap[c_name]["e_pt_coup"]++; }
+            // ✅ 수정 포인트 2: 삭제된 e_pt_coup, e_civil_war는 껍데기만 0으로 채움
+            pt.e_pt_coup = 0.0;
+            pt.e_civil_war = 0.0;
 
+            // ✅ 수정 포인트 3: 인덱스가 2씩 앞으로 당겨짐 (8->6, 9->7 ... 13->11)
             try {
-                if (!row[7].empty()) pt.e_civil_war = std::stod(row[7]);
-                else vdemMissingMap[c_name]["e_civil_war"]++;
-            }
-            catch (...) { vdemMissingMap[c_name]["e_civil_war"]++; }
-
-            try {
-                if (!row[8].empty()) pt.v2x_libdem = std::stod(row[8]);
+                if (!row[6].empty()) pt.v2x_libdem = std::stod(row[6]);
                 else vdemMissingMap[c_name]["v2x_libdem"]++;
             }
             catch (...) { vdemMissingMap[c_name]["v2x_libdem"]++; }
 
             try {
-                if (!row[9].empty()) pt.v2x_corr = std::stod(row[9]);
+                if (!row[7].empty()) pt.v2x_corr = std::stod(row[7]);
                 else vdemMissingMap[c_name]["v2x_corr"]++;
             }
             catch (...) { vdemMissingMap[c_name]["v2x_corr"]++; }
 
             try {
-                if (!row[10].empty()) pt.v2x_veracc = std::stod(row[10]);
+                if (!row[8].empty()) pt.v2x_veracc = std::stod(row[8]);
                 else vdemMissingMap[c_name]["v2x_veracc"]++;
             }
             catch (...) { vdemMissingMap[c_name]["v2x_veracc"]++; }
 
             try {
-                if (!row[11].empty()) pt.v2xcs_ccsi = std::stod(row[11]);
+                if (!row[9].empty()) pt.v2xcs_ccsi = std::stod(row[9]);
                 else vdemMissingMap[c_name]["v2xcs_ccsi"]++;
             }
             catch (...) { vdemMissingMap[c_name]["v2xcs_ccsi"]++; }
 
             try {
-                if (!row[12].empty()) pt.v2x_polyarchy = std::stod(row[12]);
+                if (!row[10].empty()) pt.v2x_polyarchy = std::stod(row[10]);
                 else vdemMissingMap[c_name]["v2x_polyarchy"]++;
             }
             catch (...) { vdemMissingMap[c_name]["v2x_polyarchy"]++; }
 
             try {
-                if (!row[13].empty()) pt.v2elintim = std::stod(row[13]);
+                if (!row[11].empty()) pt.v2elintim = std::stod(row[11]);
                 else vdemMissingMap[c_name]["v2elintim"]++;
             }
             catch (...) { vdemMissingMap[c_name]["v2elintim"]++; }
@@ -702,13 +698,23 @@ int main() {
     DetectOutliersMAD(gdelt_goldstein, "GDELT: AvgGoldstein", 3.0);
     DetectOutliersMAD(gdelt_articles, "GDELT: TotalArticles", 3.0);
 
+    auto view_hist_goldstein = ShowHistogram(rawData, 20, -10.0, 10.0);
+    auto view_outlier_gdelt = ShowOutlierScatterPlot(gdelt_articles, "GDELT: TotalArticles");
+
     // 2. ACLED: fatalities 검사
+    vtkSmartPointer<vtkContextView> view_outlier_acled = nullptr;
+    vtkSmartPointer<vtkContextView> view_hist_acled = nullptr;
+    vtkSmartPointer<vtkContextView> view_box_acled = nullptr;
     if (!rawData_Acled.empty()) {
         std::vector<double> acled_fatalities;
         for (const auto& pt : rawData_Acled) {
             acled_fatalities.push_back(pt.fatalities);
         }
         DetectOutliersMAD(acled_fatalities, "ACLED: Fatalities", 3.0);
+
+        view_outlier_acled = ShowOutlierScatterPlot(acled_fatalities, "ACLED: Fatalities");
+        view_hist_acled = ShowHistogram(acled_fatalities, "ACLED: Fatalities Distribution", 50);
+        view_box_acled = ShowBoxPlot_Fatalities(rawData_Acled, "ACLED: Fatalities");
     }
 
     // ==========================================================
@@ -722,7 +728,7 @@ int main() {
 
     std::vector<std::string> codesC = { "NOR", "CHE", "JPN", "KOR", "PRT", "URY", "BWA", "MNG", "CAN", "DEU" };
     std::vector<std::string> namesC = { "Norway", "Switzerland", "Japan", "South Korea", "Portugal", "Uruguay", "Botswana", "Mongolia", "Canada", "Germany" };
-
+    /*
     auto viewA = ShowInteractiveGroupChart(rawData_Vdem, "[Group A]", codesA, namesA);
     auto viewB = ShowInteractiveGroupChart(rawData_Vdem, "[Group B]", codesB, namesB);
     auto viewC = ShowInteractiveGroupChart(rawData_Vdem, "[Group C]", codesC, namesC);
@@ -752,9 +758,25 @@ int main() {
     };
 
     auto view_corr = ShowInteractiveScatterPlot(rawData_Acled, targetXVars);
+    */
+    if (view_outlier_gdelt != nullptr) {
+        std::cout << "[1/4] GDELT: TotalArticles 이상치(Outlier) 차트를 띄웁니다.\n";
+        view_outlier_gdelt->GetInteractor()->Start();
+    }
 
-    if (view_esc != nullptr) {
-        view_esc->GetInteractor()->Start();
+    if (view_hist_goldstein != nullptr) {
+        std::cout << "[2/4] GDELT: AvgGoldstein 히스토그램을 띄웁니다.\n";
+        view_hist_goldstein->GetInteractor()->Start();
+    }
+
+    if (view_hist_acled != nullptr) {
+        std::cout << "[3/4] ACLED: Fatalities 히스토그램을 띄웁니다.\n";
+        view_hist_acled->GetInteractor()->Start();
+    }
+
+    if (view_box_acled != nullptr) {
+        std::cout << "[4/4] ACLED: Fatalities 박스플롯을 띄웁니다.\n";
+        view_box_acled->GetInteractor()->Start();
     }
 
     return 0;

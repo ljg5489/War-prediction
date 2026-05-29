@@ -3,6 +3,10 @@
 #include "ScatterViewer.h"
 #include <iostream>
 
+#include <algorithm>               
+#include <cmath>                   
+#include <vtkUnsignedCharArray.h>  
+
 #include <vtkContextScene.h>
 #include <vtkChartXY.h>
 #include <vtkPlotPoints.h>
@@ -11,12 +15,13 @@
 #include <vtkRenderWindow.h>
 #include <vtkRenderWindowInteractor.h>
 #include <vtkRenderer.h>
-#include <vtkAxis.h>       // ✅ 추가: 축 범위 고정에 필요
-#include <vtkTextProperty.h> // ✅ 추가: 축 글씨 스타일
+#include <vtkAxis.h>       
+#include <vtkTextProperty.h> 
 #include <vtkCommand.h>
 #include <map>
 #include <vtkDoubleArray.h>
 #include <vtkStringArray.h>
+#include <vtkPen.h>
 
 // ============================================================
 //  GDELT Scatter Plot
@@ -433,5 +438,109 @@ vtkSmartPointer<vtkContextView> ShowInteractiveScatterPlot(
     view->GetInteractor()->AddObserver(vtkCommand::KeyPressEvent, observer);
 
     view->GetRenderWindow()->Render();
+    return view;
+}
+
+vtkSmartPointer<vtkContextView> ShowOutlierScatterPlot(const std::vector<double>& data, const std::string& variableName, double threshold) {
+    if (data.empty()) return nullptr;
+
+    // 1. 데이터 테이블 분리 (정상 데이터용, 이상치 데이터용)
+    vtkSmartPointer<vtkTable> normalTable = vtkSmartPointer<vtkTable>::New();
+    vtkSmartPointer<vtkFloatArray> nX = vtkSmartPointer<vtkFloatArray>::New(); nX->SetName("Index");
+    vtkSmartPointer<vtkFloatArray> nY = vtkSmartPointer<vtkFloatArray>::New(); nY->SetName(variableName.c_str());
+    normalTable->AddColumn(nX); normalTable->AddColumn(nY);
+
+    vtkSmartPointer<vtkTable> outlierTable = vtkSmartPointer<vtkTable>::New();
+    vtkSmartPointer<vtkFloatArray> oX = vtkSmartPointer<vtkFloatArray>::New(); oX->SetName("Index");
+    vtkSmartPointer<vtkFloatArray> oY = vtkSmartPointer<vtkFloatArray>::New(); oY->SetName(variableName.c_str());
+    outlierTable->AddColumn(oX); outlierTable->AddColumn(oY);
+
+    // 2. MAD 및 경계값 계산
+    std::vector<double> sortedData = data;
+    std::sort(sortedData.begin(), sortedData.end());
+    double median = (sortedData.size() % 2 == 0) ? (sortedData[sortedData.size() / 2 - 1] + sortedData[sortedData.size() / 2]) / 2.0 : sortedData[sortedData.size() / 2];
+
+    std::vector<double> absDev;
+    for (double val : data) absDev.push_back(std::abs(val - median));
+    std::sort(absDev.begin(), absDev.end());
+    double mad = (absDev.size() % 2 == 0) ? (absDev[absDev.size() / 2 - 1] + absDev[absDev.size() / 2]) / 2.0 : absDev[absDev.size() / 2];
+    double scaledMad = mad * 1.4826;
+    double range = threshold * scaledMad;
+    double upperLimit = median + range;
+    double lowerLimit = std::max(0.0, median - range);
+
+    // 3. 데이터 샘플링 및 분리 입력
+    // 4300만 개를 다 그리면 렌더링이 멈추므로 10만 개 단위로 샘플링합니다.
+    int step = (data.size() > 100000) ? (int)(data.size() / 100000) : 1;
+    float lastX = 0.0f;
+    for (size_t i = 0; i < data.size(); i += step) {
+        bool isOutlier = (scaledMad > 0.0 && std::abs(data[i] - median) > range);
+        if (isOutlier) {
+            oX->InsertNextValue(static_cast<float>(i));
+            oY->InsertNextValue(static_cast<float>(data[i]));
+        }
+        else {
+            nX->InsertNextValue(static_cast<float>(i));
+            nY->InsertNextValue(static_cast<float>(data[i]));
+        }
+        lastX = static_cast<float>(i);
+    }
+
+    // 4. 차트 설정
+    vtkSmartPointer<vtkContextView> view = vtkSmartPointer<vtkContextView>::New();
+    view->GetRenderer()->SetBackground(1.0, 1.0, 1.0);
+    view->GetRenderWindow()->SetSize(900, 600);
+    view->GetRenderWindow()->SetWindowName(("Outlier: " + variableName).c_str());
+
+    vtkSmartPointer<vtkChartXY> chart = vtkSmartPointer<vtkChartXY>::New();
+    view->GetScene()->AddItem(chart);
+    chart->SetShowLegend(false);
+
+    // ✅ 중앙값을 화면 중앙에 배치
+    chart->GetAxis(vtkAxis::LEFT)->SetRange(-20.0, 400);
+    chart->GetAxis(vtkAxis::LEFT)->SetBehavior(vtkAxis::FIXED);
+    chart->GetAxis(vtkAxis::BOTTOM)->SetRange(0, lastX);
+    chart->GetAxis(vtkAxis::BOTTOM)->SetBehavior(vtkAxis::FIXED);
+
+    // 5. 플롯 생성 (정상/이상치 각각 별도 객체로 생성)
+    vtkPlotPoints* normalPoints = vtkPlotPoints::SafeDownCast(chart->AddPlot(vtkChart::POINTS));
+    normalPoints->SetInputData(normalTable, 0, 1);
+    normalPoints->SetColor(50, 180, 220, 150); // 파랑 (정상)
+    normalPoints->SetMarkerSize(2.0);
+
+    vtkPlotPoints* outlierPoints = vtkPlotPoints::SafeDownCast(chart->AddPlot(vtkChart::POINTS));
+    outlierPoints->SetInputData(outlierTable, 0, 1);
+    outlierPoints->SetColor(255, 60, 60, 200); // 빨강 (이상치)
+    outlierPoints->SetMarkerSize(3.0);
+
+    // 6. 기준선 세트 (중앙값, 상한선, 하한선)
+    vtkSmartPointer<vtkTable> lineTable = vtkSmartPointer<vtkTable>::New();
+    vtkSmartPointer<vtkFloatArray> lx = vtkSmartPointer<vtkFloatArray>::New(); lx->SetName("X");
+    vtkSmartPointer<vtkFloatArray> lm = vtkSmartPointer<vtkFloatArray>::New(); lm->SetName("Median");
+    vtkSmartPointer<vtkFloatArray> lu = vtkSmartPointer<vtkFloatArray>::New(); lu->SetName("Upper");
+    vtkSmartPointer<vtkFloatArray> ll = vtkSmartPointer<vtkFloatArray>::New(); ll->SetName("Lower");
+
+    lx->InsertNextValue(0); lx->InsertNextValue(lastX);
+    lm->InsertNextValue(median); lm->InsertNextValue(median);
+    lu->InsertNextValue(upperLimit); lu->InsertNextValue(upperLimit);
+    ll->InsertNextValue(lowerLimit); ll->InsertNextValue(lowerLimit);
+
+    lineTable->AddColumn(lx); lineTable->AddColumn(lm); lineTable->AddColumn(lu); lineTable->AddColumn(ll);
+
+    auto addLine = [&](int colIdx, float r, float g, float b, bool dashed) {
+        vtkPlot* p = chart->AddPlot(vtkChart::LINE);
+        p->SetInputData(lineTable, 0, colIdx);
+        p->SetColor(r, g, b, 255);
+        p->SetWidth(2.0);
+        if (dashed) p->GetPen()->SetLineType(vtkPen::DASH_LINE);
+        };
+
+    addLine(1, 30, 100, 200, false); // 중앙값 (파란 실선)
+    addLine(2, 255, 60, 60, true);   // 상한선 (빨간 점선)
+    addLine(3, 255, 60, 60, true);   // 하한선 (빨간 점선)
+
+    chart->GetAxis(vtkAxis::BOTTOM)->SetTitle("Data Index (Sampled)");
+    chart->GetAxis(vtkAxis::LEFT)->SetTitle(variableName.c_str());
+
     return view;
 }
