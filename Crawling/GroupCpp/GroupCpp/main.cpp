@@ -50,93 +50,72 @@ std::vector<std::string> ParseCSVLine(const std::string& line) {
     return result;
 }
 
-// ── 3. 사전(Dictionary) 세팅 ─────────────────────────────────────────
+// ── 3. 사전(Dictionary) 세팅 (A, B, C 그룹) ────────────────────────
 std::unordered_map<std::string, std::string> CANONICAL = {
+    // [Group A]
     {"Syria", "A"}, {"Yemen", "A"}, {"Somalia", "A"}, {"Myanmar", "A"},
     {"Ethiopia", "A"}, {"South Sudan", "A"}, {"Mali", "A"}, {"DR Congo", "A"},
     {"Ukraine", "A"}, {"Iraq", "A"},
+
+    // [Group B]
     {"Pakistan", "B"}, {"Nigeria", "B"}, {"Venezuela", "B"}, {"Sudan", "B"},
     {"Central African Republic", "B"}, {"Taiwan", "B"}, {"Haiti", "B"},
     {"Lebanon", "B"}, {"Colombia", "B"}, {"Ecuador", "B"},
+
+    // [Group C]
     {"Norway", "C"}, {"Switzerland", "C"}, {"Japan", "C"}, {"South Korea", "C"},
     {"Portugal", "C"}, {"Uruguay", "C"}, {"Botswana", "C"}, {"Mongolia", "C"},
-    {"Canada", "C"}, {"Germany", "C"},
-    {"Afghanistan", "TARGET"}
+    {"Canada", "C"}, {"Germany", "C"}
 };
 
+// GDELT CAMEO(3자리) & FIPS(2자리) 통합 매핑 테이블
 std::unordered_map<std::string, std::string> ALIAS_MAP = {
-    {"syria", "Syria"}, {"syrian arab republic", "Syria"}, {"syr", "Syria"}, {"sy", "Syria"},
-    {"yemen", "Yemen"}, {"yemen, rep.", "Yemen"}, {"republic of yemen", "Yemen"}, {"yem", "Yemen"}, {"ym", "Yemen"},
+    // --- [Group A 매핑] ---
+    {"syria", "Syria"}, {"syr", "Syria"}, {"sy", "Syria"},
+    {"yemen", "Yemen"}, {"yem", "Yemen"}, {"ym", "Yemen"},
     {"somalia", "Somalia"}, {"som", "Somalia"}, {"so", "Somalia"},
-    {"myanmar", "Myanmar"}, {"myanmar (burma)", "Myanmar"}, {"burma", "Myanmar"}, {"mmr", "Myanmar"}, {"mya", "Myanmar"}, {"bm", "Myanmar"},
+    {"myanmar", "Myanmar"}, {"mmr", "Myanmar"}, {"bm", "Myanmar"}, {"burma", "Myanmar"},
     {"ethiopia", "Ethiopia"}, {"eth", "Ethiopia"}, {"et", "Ethiopia"},
-    {"south sudan", "South Sudan"}, {"s. sudan", "South Sudan"}, {"ssd", "South Sudan"}, {"od", "South Sudan"},
+    {"south sudan", "South Sudan"}, {"ssd", "South Sudan"}, {"od", "South Sudan"},
     {"mali", "Mali"}, {"mli", "Mali"}, {"ml", "Mali"},
-    {"dr congo", "DR Congo"}, {"dr congo (zaire)", "DR Congo"}, {"congo (the democratic republic of the)", "DR Congo"},
-    {"democratic republic of the congo", "DR Congo"}, {"democratic republic of congo", "DR Congo"}, {"congo, dem. rep.", "DR Congo"},
-    {"congo, democratic republic", "DR Congo"}, {"drc", "DR Congo"}, {"zaire", "DR Congo"}, {"cod", "DR Congo"}, {"cg", "DR Congo"},
+    {"dr congo", "DR Congo"}, {"cod", "DR Congo"}, {"cg", "DR Congo"}, {"democratic republic of the congo", "DR Congo"}, {"zaire", "DR Congo"},
     {"ukraine", "Ukraine"}, {"ukr", "Ukraine"}, {"up", "Ukraine"},
     {"iraq", "Iraq"}, {"irq", "Iraq"}, {"iz", "Iraq"},
+
+    // --- [Group B 매핑] ---
     {"pakistan", "Pakistan"}, {"pak", "Pakistan"}, {"pk", "Pakistan"},
-    {"nigeria", "Nigeria"}, {"nga", "Nigeria"}, {"nig", "Nigeria"}, {"ni", "Nigeria"},
-    {"venezuela", "Venezuela"}, {"venezuela, rb", "Venezuela"}, {"bolivarian republic of venezuela", "Venezuela"}, {"ven", "Venezuela"}, {"ve", "Venezuela"},
-    {"sudan", "Sudan"}, {"sdn", "Sudan"}, {"sud", "Sudan"}, {"su", "Sudan"},
-    {"central african republic", "Central African Republic"}, {"car", "Central African Republic"}, {"caf", "Central African Republic"}, {"ct", "Central African Republic"},
-    {"taiwan", "Taiwan"}, {"taiwan, province of china", "Taiwan"}, {"twn", "Taiwan"}, {"tw", "Taiwan"},
+    {"nigeria", "Nigeria"}, {"nga", "Nigeria"}, {"ni", "Nigeria"},
+    {"venezuela", "Venezuela"}, {"ven", "Venezuela"}, {"ve", "Venezuela"},
+    {"sudan", "Sudan"}, {"sdn", "Sudan"}, {"su", "Sudan"},
+    {"central african republic", "Central African Republic"}, {"caf", "Central African Republic"}, {"ct", "Central African Republic"},
+    {"taiwan", "Taiwan"}, {"twn", "Taiwan"}, {"tw", "Taiwan"},
     {"haiti", "Haiti"}, {"hti", "Haiti"}, {"ha", "Haiti"},
-    {"lebanon", "Lebanon"}, {"lbn", "Lebanon"}, {"leb", "Lebanon"}, {"le", "Lebanon"},
-    {"colombia", "Colombia"}, {"col", "Colombia"}, {"co", "Colombia"},
+    {"lebanon", "Lebanon"}, {"lbn", "Lebanon"}, {"le", "Lebanon"},
+    {"colombia", "Colombia"}, {"col", "Colombia"}, {"co", "Colombia"}, {"columbia", "Colombia"},
     {"ecuador", "Ecuador"}, {"ecu", "Ecuador"}, {"ec", "Ecuador"},
+
+    // --- [Group C 매핑] ---
     {"norway", "Norway"}, {"nor", "Norway"}, {"no", "Norway"},
-    {"switzerland", "Switzerland"}, {"che", "Switzerland"}, {"sui", "Switzerland"}, {"sz", "Switzerland"},
+    {"switzerland", "Switzerland"}, {"che", "Switzerland"}, {"sz", "Switzerland"},
     {"japan", "Japan"}, {"jpn", "Japan"}, {"ja", "Japan"},
-    {"south korea", "South Korea"}, {"korea, south", "South Korea"}, {"korea, rep.", "South Korea"},
-    {"korea (the republic of)", "South Korea"}, {"republic of korea", "South Korea"}, {"kor", "South Korea"}, {"ks", "South Korea"},
+    {"south korea", "South Korea"}, {"kor", "South Korea"}, {"ks", "South Korea"}, {"korea, south", "South Korea"},
     {"portugal", "Portugal"}, {"prt", "Portugal"}, {"po", "Portugal"},
     {"uruguay", "Uruguay"}, {"ury", "Uruguay"}, {"uy", "Uruguay"},
     {"botswana", "Botswana"}, {"bwa", "Botswana"}, {"bc", "Botswana"},
     {"mongolia", "Mongolia"}, {"mng", "Mongolia"}, {"mg", "Mongolia"},
     {"canada", "Canada"}, {"can", "Canada"}, {"ca", "Canada"},
-    {"germany", "Germany"}, {"deu", "Germany"}, {"ger", "Germany"}, {"gm", "Germany"},
-    {"afghanistan", "Afghanistan"}, {"afg", "Afghanistan"}, {"af", "Afghanistan"},
-    {"united states", "USA"}, {"united states of america", "USA"}, {"usa", "USA"}, {"us", "USA"},
-    {"mexico", "Mexico"}, {"mex", "Mexico"}, {"mx", "Mexico"},
-    {"brazil", "Brazil"}, {"bra", "Brazil"}, {"br", "Brazil"},
-    {"argentina", "Argentina"}, {"arg", "Argentina"}, {"ar", "Argentina"},
-    {"chile", "Chile"}, {"chl", "Chile"}, {"ci", "Chile"},
-    {"peru", "Peru"}, {"per", "Peru"}, {"pe", "Peru"},
-    {"cuba", "Cuba"}, {"cub", "Cuba"}, {"cu", "Cuba"},
-    {"united kingdom", "United Kingdom"}, {"uk", "United Kingdom"}, {"gbr", "United Kingdom"}, {"gb", "United Kingdom"},
+    {"germany", "Germany"}, {"deu", "Germany"}, {"gm", "Germany"},
+
+    // --- [기타 주요 국가 (매핑률 향상을 위해 유지, Group은 OTHER로 처리됨)] ---
+    {"united states", "USA"}, {"usa", "USA"}, {"us", "USA"},
+    {"china", "China"}, {"chn", "China"}, {"ch", "China"},
+    {"russia", "Russia"}, {"rus", "Russia"}, {"rs", "Russia"}, {"ru", "Russia"},
+    {"united kingdom", "United Kingdom"}, {"gbr", "United Kingdom"}, {"gb", "United Kingdom"}, {"uk", "United Kingdom"},
     {"france", "France"}, {"fra", "France"}, {"fr", "France"},
-    {"russia", "Russia"}, {"russian federation", "Russia"}, {"rus", "Russia"}, {"rs", "Russia"}, {"ru", "Russia"},
-    {"italy", "Italy"}, {"ita", "Italy"}, {"it", "Italy"},
-    {"spain", "Spain"}, {"esp", "Spain"}, {"sp", "Spain"},
-    {"poland", "Poland"}, {"pol", "Poland"}, {"pl", "Poland"},
-    {"netherlands", "Netherlands"}, {"nld", "Netherlands"}, {"nl", "Netherlands"},
-    {"sweden", "Sweden"}, {"swe", "Sweden"}, {"sw", "Sweden"},
-    {"greece", "Greece"}, {"grc", "Greece"}, {"gr", "Greece"},
-    {"china", "China"}, {"chn", "China"}, {"ch", "China"}, {"cn", "China"},
     {"india", "India"}, {"ind", "India"}, {"in", "India"},
-    {"indonesia", "Indonesia"}, {"idn", "Indonesia"}, {"id", "Indonesia"},
-    {"philippines", "Philippines"}, {"phl", "Philippines"}, {"rp", "Philippines"}, {"ph", "Philippines"},
-    {"australia", "Australia"}, {"aus", "Australia"}, {"as", "Australia"}, {"au", "Australia"},
-    {"new zealand", "New Zealand"}, {"nzl", "New Zealand"}, {"nz", "New Zealand"},
-    {"north korea", "North Korea"}, {"prk", "North Korea"}, {"kn", "North Korea"}, {"korea, north", "North Korea"},
-    {"vietnam", "Vietnam"}, {"vnm", "Vietnam"}, {"vm", "Vietnam"}, {"vn", "Vietnam"},
-    {"thailand", "Thailand"}, {"tha", "Thailand"}, {"th", "Thailand"},
-    {"malaysia", "Malaysia"}, {"mys", "Malaysia"}, {"my", "Malaysia"},
-    {"saudi arabia", "Saudi Arabia"}, {"sau", "Saudi Arabia"}, {"sa", "Saudi Arabia"},
-    {"egypt", "Egypt"}, {"egy", "Egypt"}, {"eg", "Egypt"},
-    {"turkey", "Turkey"}, {"tur", "Turkey"}, {"tu", "Turkey"}, {"tr", "Turkey"}, {"turkiye", "Turkey"},
-    {"iran", "Iran"}, {"irn", "Iran"}, {"ir", "Iran"}, {"islamic republic of iran", "Iran"},
-    {"israel", "Israel"}, {"isr", "Israel"}, {"is", "Israel"}, {"il", "Israel"},
-    {"united arab emirates", "UAE"}, {"are", "UAE"}, {"ae", "UAE"}, {"uae", "UAE"},
-    {"algeria", "Algeria"}, {"dza", "Algeria"}, {"ag", "Algeria"}, {"dz", "Algeria"},
-    {"morocco", "Morocco"}, {"mar", "Morocco"}, {"mo", "Morocco"},
-    {"south africa", "South Africa"}, {"zaf", "South Africa"}, {"sf", "South Africa"}, {"za", "South Africa"},
-    {"kenya", "Kenya"}, {"ken", "Kenya"}, {"ke", "Kenya"},
-    {"uganda", "Uganda"}, {"uga", "Uganda"}, {"ug", "Uganda"},
-    {"angola", "Angola"}, {"ago", "Angola"}, {"ao", "Angola"}
+    {"israel", "Israel"}, {"isr", "Israel"}, {"is", "Israel"},
+    {"iran", "Iran"}, {"irn", "Iran"}, {"ir", "Iran"},
+    {"brazil", "Brazil"}, {"bra", "Brazil"}, {"br", "Brazil"}
 };
 
 std::vector<std::string> CANDIDATE_COLS = {
@@ -152,7 +131,9 @@ std::string Normalize(const std::string& name) {
     if (name.empty()) return "";
     std::string lower = ToLowerCase(Trim(name));
     if (ALIAS_MAP.find(lower) != ALIAS_MAP.end()) return ALIAS_MAP[lower];
-    if (lower.length() > 2) {
+
+    // ALIAS에 없는 경우, 첫 글자만 대문자로 변환하여 반환
+    if (lower.length() >= 2) {
         std::string auto_name = lower;
         auto_name[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(auto_name[0])));
         return auto_name;
@@ -160,15 +141,22 @@ std::string Normalize(const std::string& name) {
     return "";
 }
 
+// ✅ [핵심 변경점] A, B, C 외의 국가는 모두 'OTHER'로 반환
 std::string AssignGroup(const std::string& std_name) {
     if (std_name.empty()) return "UNKNOWN";
-    if (CANONICAL.find(std_name) != CANONICAL.end()) return CANONICAL[std_name];
+
+    // CANONICAL 맵에 있으면 해당 그룹(A, B, C) 반환
+    if (CANONICAL.find(std_name) != CANONICAL.end()) {
+        return CANONICAL[std_name];
+    }
+
+    // 없으면 모두 "OTHER"
     return "OTHER";
 }
 
 int main() {
-    std::string inputFilePath = "..\\..\\GDELT\\GDELT_Daily_All_Countries.csv";
-    std::string outputFilePath = "..\\..\\GDELT\\GDELT_Daily_All_Countries_Grouped.csv";
+    std::string inputFilePath = "..\\..\\GDELT\\GDELT_2013_2024_Cleaned.csv";
+    std::string outputFilePath = "..\\..\\GDELT\\GDELT_2013_2024_Cleaned_Grouped.csv";
 
     std::ifstream inFile(inputFilePath);
     if (!inFile.is_open()) {
@@ -211,13 +199,15 @@ int main() {
 
     std::cout << "국가명 컬럼 자동 감지: '" << foundColName << "' (인덱스: " << countryColIndex << ")\n";
 
+    // 헤더에 새로 추가될 열 작성
     outFile << headerLine << ",country_std,group\n";
 
     int total = 0;
-    int matched = 0;
+    int matched_abc = 0;
+    int matched_other = 0;
     std::map<std::string, int> unknown_counts;
 
-    std::cout << " GDELT 초고속 데이터 처리 시작...\n";
+    std::cout << " GDELT 초고속 데이터 그룹핑(A/B/C/OTHER) 처리 시작...\n";
 
     std::string line;
     while (std::getline(inFile, line)) {
@@ -234,10 +224,15 @@ int main() {
         std::string std_name = Normalize(country_val);
         std::string group = AssignGroup(std_name);
 
-        if (group != "UNKNOWN") matched++;
-        else {
+        if (group == "UNKNOWN") {
             std::string badName = Trim(country_val);
             if (!badName.empty()) unknown_counts[badName]++;
+        }
+        else if (group == "OTHER") {
+            matched_other++;
+        }
+        else {
+            matched_abc++; // A, B, C 그룹 카운트
         }
 
         outFile << line << "," << std_name << "," << group << "\n";
@@ -246,14 +241,15 @@ int main() {
     inFile.close();
     outFile.close();
 
-    int unknown = total - matched;
+    int unknown = total - matched_abc - matched_other;
 
     std::cout << "\n========================================\n";
-    std::cout << " 매핑 결과 요약\n";
+    std::cout << " 그룹화(Grouping) 결과 요약\n";
     std::cout << "========================================\n";
-    std::cout << " - 전체 행 수   : " << total << " 행\n";
-    std::cout << " - 성공(Matched): " << matched << " 행 (" << (total > 0 ? (double)matched / total * 100 : 0) << "%)\n";
-    std::cout << " - 실패(Unknown): " << unknown << " 행 (" << (total > 0 ? (double)unknown / total * 100 : 0) << "%)\n";
+    std::cout << " - 전체 행 수           : " << total << " 행\n";
+    std::cout << " - A/B/C 그룹 분류 완료 : " << matched_abc << " 행\n";
+    std::cout << " - OTHER 그룹 분류 완료 : " << matched_other << " 행\n";
+    std::cout << " - 실패(UNKNOWN)        : " << unknown << " 행 (" << (total > 0 ? (double)unknown / total * 100 : 0) << "%)\n";
 
     if (unknown > 0) {
         std::cout << "\n 매핑 실패 데이터 상위 노출 (최대 15개)\n";

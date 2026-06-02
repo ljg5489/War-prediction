@@ -1,9 +1,8 @@
-﻿  HistogramViewer.cpp
-  main.cpp
+﻿  main.cpp
   코드를 생성하고 있습니다.
-  254 of 1251 functions (20.3%) were compiled, the rest were copied from previous compilation.
-    0 functions were new in current compilation
-    91 functions had inline decision re-evaluated but remain unchanged
+  11 of 1281 functions ( 0.9%) were compiled, the rest were copied from previous compilation.
+    7 functions were new in current compilation
+    45 functions had inline decision re-evaluated but remain unchanged
   코드를 생성했습니다.
   ViewerCpp.vcxproj -> C:\Users\hk100\Desktop\War-prediction\Crawling\ViewerCpp\x64\Release\ViewerCpp.exe
   'pwsh.exe'은(는) 내부 또는 외부 명령, 실행할 수 있는 프로그램, 또는

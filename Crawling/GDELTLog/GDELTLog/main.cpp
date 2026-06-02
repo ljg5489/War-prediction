@@ -38,13 +38,13 @@ static std::vector<std::string> ParseCSVLine(const std::string& line) {
 void ApplyLogToGDELT(const std::string& inputPath, const std::string& outputPath) {
     std::ifstream inFile(inputPath);
     if (!inFile.is_open()) {
-        std::cerr << "❌ 파일 열기 실패: " << inputPath << "\n";
+        std::cerr << "파일 열기 실패: " << inputPath << "\n";
         return;
     }
 
     std::ofstream outFile(outputPath);
     if (!outFile.is_open()) {
-        std::cerr << "❌ 파일 생성 실패: " << outputPath << "\n";
+        std::cerr << "파일 생성 실패: " << outputPath << "\n";
         inFile.close();
         return;
     }
@@ -59,7 +59,7 @@ void ApplyLogToGDELT(const std::string& inputPath, const std::string& outputPath
     int successRows = 0;
     int errorRows = 0;
 
-    std::cout << "🚀 GDELT TotalArticles 로그 변환 작업 시작...\n";
+    std::cout << "GDELT TotalArticles 로그 변환 작업 시작...\n";
 
     // 2. 데이터 순회
     while (std::getline(inFile, line)) {
@@ -105,7 +105,7 @@ void ApplyLogToGDELT(const std::string& inputPath, const std::string& outputPath
     inFile.close();
     outFile.close();
 
-    std::cout << "✅ 변환 완료: 총 " << totalRows << "행 중 " << successRows << "행 저장 (에러/누락: " << errorRows << "행)\n";
+    std::cout << "변환 완료: 총 " << totalRows << "행 중 " << successRows << "행 저장 (에러/누락: " << errorRows << "행)\n";
     std::cout << "저장된 파일: " << outputPath << "\n\n";
 }
 
@@ -113,10 +113,10 @@ int main() {
     SetConsoleOutputCP(CP_UTF8);
 
     // 원본 파일 경로 (2013~2024 필터링이 끝난 파일)
-    std::string gdeltIn = "..\\..\\GDELT\\GDELT_2013_2024_Cleaned.csv";
+    std::string gdeltIn = "..\\..\\GDELT\\GDELT_2013_2024_Cleaned_Grouped.csv";
 
     // 로그 변환이 적용되어 새롭게 저장될 파일 경로
-    std::string gdeltOut = "..\\..\\GDELT\\GDELT_2013_2024_Log.csv";
+    std::string gdeltOut = "..\\..\\GDELT\\GDELT_2013_2024_Cleaned_Grouped_Log.csv";
 
     ApplyLogToGDELT(gdeltIn, gdeltOut);
 

@@ -217,6 +217,97 @@ std::unordered_map<std::string, std::string> ALIAS_MAP = {
     {"angola", "Angola"}, {"ago", "Angola"}, {"ao", "Angola"}
 };
 
+// GDELT CAMEO (3-letter) 국가/지역 코드 사전
+std::unordered_map<std::string, std::string> CAMEO_COUNTRY_MAP = {
+    {"WSB", "West Bank"}, {"BAG", "Baghdad"}, {"GZS", "Gaza Strip"},
+    {"AFR", "Africa"}, {"ASA", "Asia"}, {"BLK", "Balkans"},
+    {"CRB", "Caribbean"}, {"CAU", "Caucasus"}, {"CFR", "Central Africa"},
+    {"CAS", "Central Asia"}, {"CEU", "Central Europe"}, {"EIN", "East Indies"},
+    {"EAF", "Eastern Africa"}, {"EEU", "Eastern Europe"}, {"EUR", "Europe"},
+    {"LAM", "Latin America"}, {"MEA", "Middle East"}, {"MDT", "Mediterranean"},
+    {"NAF", "North Africa"}, {"NMR", "North America"}, {"PGS", "Persian Gulf"},
+    {"SCN", "Scandinavia"}, {"SAM", "South America"}, {"SAS", "South Asia"},
+    {"SEA", "Southeast Asia"}, {"SAF", "Southern Africa"}, {"WAF", "West Africa"},
+    {"WST", "The West"}, {"AFG", "Afghanistan"}, {"ALA", "Aland Islands"},
+    {"ALB", "Albania"}, {"DZA", "Algeria"}, {"ASM", "American Samoa"},
+    {"AND", "Andorra"}, {"AGO", "Angola"}, {"AIA", "Anguilla"},
+    {"ATG", "Antigua and Barbuda"}, {"ARG", "Argentina"}, {"ARM", "Armenia"},
+    {"ABW", "Aruba"}, {"AUS", "Australia"}, {"AUT", "Austria"},
+    {"AZE", "Azerbaijan"}, {"BHS", "Bahamas"}, {"BHR", "Bahrain"},
+    {"BGD", "Bangladesh"}, {"BRB", "Barbados"}, {"BLR", "Belarus"},
+    {"BEL", "Belgium"}, {"BLZ", "Belize"}, {"BEN", "Benin"},
+    {"BMU", "Bermuda"}, {"BTN", "Bhutan"}, {"BOL", "Bolivia"},
+    {"BIH", "Bosnia and Herzegovina"}, {"BWA", "Botswana"}, {"BRA", "Brazil"},
+    {"VGB", "British Virgin Islands"}, {"BRN", "Brunei Darussalam"}, {"BGR", "Bulgaria"},
+    {"BFA", "Burkina Faso"}, {"BDI", "Burundi"}, {"KHM", "Cambodia"},
+    {"CMR", "Cameroon"}, {"CAN", "Canada"}, {"CPV", "Cape Verde"},
+    {"CYM", "Cayman Islands"}, {"CAF", "Central African Republic"}, {"TCD", "Chad"},
+    {"CHL", "Chile"}, {"CHN", "China"}, {"COL", "Columbia"},
+    {"COM", "Comoros"}, {"COD", "Democratic Republic of the Congo"}, {"COG", "People's Republic of the Congo"},
+    {"COK", "Cook Islands"}, {"CRI", "Costa Rica"}, {"CIV", "Ivory Coast"},
+    {"HRV", "Croatia"}, {"CUB", "Cuba"}, {"CYP", "Cyprus"},
+    {"CZE", "Czech Republic"}, {"DNK", "Denmark"}, {"DJI", "Djibouti"},
+    {"DMA", "Dominica"}, {"DOM", "Dominican Republic"}, {"TMP", "East Timor"},
+    {"ECU", "Ecuador"}, {"EGY", "Egypt"}, {"SLV", "El Salvador"},
+    {"GNQ", "Equatorial Guinea"}, {"ERI", "Eritrea"}, {"EST", "Estonia"},
+    {"ETH", "Ethiopia"}, {"FRO", "Faeroe Islands"}, {"FLK", "Falkland Islands"},
+    {"FJI", "Fiji"}, {"FIN", "Finland"}, {"FRA", "France"},
+    {"GUF", "French Guiana"}, {"PYF", "French Polynesia"}, {"GAB", "Gabon"},
+    {"GMB", "Gambia"}, {"GEO", "Georgia"}, {"DEU", "Germany"},
+    {"GHA", "Ghana"}, {"GIB", "Gibraltar"}, {"GRC", "Greece"},
+    {"GRL", "Greenland"}, {"GRD", "Grenada"}, {"GLP", "Guadeloupe"},
+    {"GUM", "Guam"}, {"GTM", "Guatemala"}, {"GIN", "Guinea"},
+    {"GNB", "Guinea-Bissau"}, {"GUY", "Guyana"}, {"HTI", "Haiti"},
+    {"VAT", "Vatican City"}, {"HND", "Honduras"}, {"HKG", "Hong Kong"},
+    {"HUN", "Hungary"}, {"ISL", "Iceland"}, {"IND", "India"},
+    {"IDN", "Indonesia"}, {"IRN", "Iran"}, {"IRQ", "Iraq"},
+    {"IRL", "Ireland"}, {"IMY", "Isle of Man"}, {"ISR", "Israel"},
+    {"ITA", "Italy"}, {"JAM", "Jamaica"}, {"JPN", "Japan"},
+    {"JOR", "Jordan"}, {"KAZ", "Kazakhstan"}, {"KEN", "Kenya"},
+    {"KIR", "Kiribati"}, {"PRK", "North Korea"}, {"KOR", "South Korea"},
+    {"KWT", "Kuwait"}, {"KGZ", "Kyrgyzstan"}, {"LAO", "Laos"},
+    {"LVA", "Latvia"}, {"LBN", "Lebanon"}, {"LSO", "Lesotho"},
+    {"LBR", "Liberia"}, {"LBY", "Libya"}, {"LIE", "Liechtenstein"},
+    {"LTU", "Lithuania"}, {"LUX", "Luxembourg"}, {"MAC", "Macao"},
+    {"MKD", "Macedonia"}, {"MDG", "Madagascar"}, {"MWI", "Malawi"},
+    {"MYS", "Malaysia"}, {"MDV", "Maldives"}, {"MLI", "Mali"},
+    {"MLT", "Malta"}, {"MHL", "Marshall Islands"}, {"MTQ", "Martinique"},
+    {"MRT", "Mauritania"}, {"MUS", "Mauritius"}, {"MYT", "Mayotte"},
+    {"MEX", "Mexico"}, {"FSM", "Micronesia"}, {"MDA", "Moldova"},
+    {"MCO", "Monaco"}, {"MNG", "Mongolia"}, {"MTN", "Montenegro"},
+    {"MSR", "Montserrat"}, {"MAR", "Morocco"}, {"MOZ", "Mozambique"},
+    {"MMR", "Myanmar"}, {"NAM", "Namibia"}, {"NRU", "Nauru"},
+    {"NPL", "Nepal"}, {"NLD", "Netherlands"}, {"ANT", "Netherlands Antilles"},
+    {"NCL", "New Caledonia"}, {"NZL", "New Zealand"}, {"NIC", "Nicaragua"},
+    {"NER", "Niger"}, {"NGA", "Nigeria"}, {"NIU", "Niue"},
+    {"NFK", "Norfolk Island"}, {"MNP", "Northern Mariana Islands"}, {"NOR", "Norway"},
+    {"PSE", "Occupied Palestinian Territory"}, {"OMN", "Oman"}, {"PAK", "Pakistan"},
+    {"PLW", "Palau"}, {"PAN", "Panama"}, {"PNG", "Papua New Guinea"},
+    {"PRY", "Paraguay"}, {"PER", "Peru"}, {"PHL", "Philippines"},
+    {"PCN", "Pitcairn"}, {"POL", "Poland"}, {"PRT", "Portugal"},
+    {"PRI", "Puerto Rico"}, {"QAT", "Qatar"}, {"REU", "Runion"},
+    {"ROM", "Romania"}, {"RUS", "Russia"}, {"RWA", "Rwanda"},
+    {"SHN", "Saint Helena"}, {"KNA", "Saint Kitts-Nevis"}, {"LCA", "Saint Lucia"},
+    {"SPM", "Saint Pierre and Miquelon"}, {"VCT", "Saint Vincent and the Grenadines"}, {"WSM", "Samoa"},
+    {"SMR", "San Marino"}, {"STP", "Sao Tome and Principe"}, {"SAU", "Saudi Arabia"},
+    {"SEN", "Senegal"}, {"SRB", "Serbia"}, {"SYC", "Seychelles"},
+    {"SLE", "Sierra Leone"}, {"SGP", "Singapore"}, {"SVK", "Slovakia"},
+    {"SVN", "Slovenia"}, {"SLB", "Solomon Islands"}, {"SOM", "Somalia"},
+    {"ZAF", "South Africa"}, {"ESP", "Spain"}, {"LKA", "Sri Lanka"},
+    {"SDN", "Sudan"}, {"SUR", "Suriname"}, {"SJM", "Svalbard and Jan Mayen Islands"},
+    {"SWZ", "Swaziland"}, {"SWE", "Sweden"}, {"CHE", "Switzerland"},
+    {"SYR", "Syria"}, {"TWN", "Taiwan"}, {"TJK", "Tajikistan"},
+    {"TZA", "Tanzania"}, {"THA", "Thailand"}, {"TGO", "Togo"},
+    {"TKL", "Tokelau"}, {"TON", "Tonga"}, {"TTO", "Trinidad and Tobago"},
+    {"TUN", "Tunisia"}, {"TUR", "Turkey"}, {"TKM", "Turkmenistan"},
+    {"TCA", "Turks and Caicos Islands"}, {"TUV", "Tuvalu"}, {"UGA", "Uganda"},
+    {"UKR", "Ukraine"}, {"ARE", "United Arab Emirates"}, {"GBR", "United Kingdom"},
+    {"USA", "United States"}, {"VIR", "United States Virgin Islands"}, {"URY", "Uruguay"},
+    {"UZB", "Uzbekistan"}, {"VUT", "Vanuatu"}, {"VEN", "Venezuela"},
+    {"VNM", "Vietnam"}, {"WLF", "Wallis and Futuna Islands"}, {"ESH", "Western Sahara"},
+    {"YEM", "Yemen"}, {"ZMB", "Zambia"}, {"ZWE", "Zimbabwe"}
+};
+
 std::string Trim(const std::string& s) {
     if (s.empty()) return "";
     size_t first = s.find_first_not_of(" \t\r\n");
@@ -235,7 +326,7 @@ int main() {
     SetConsoleOutputCP(CP_UTF8);
 
     // 파일 경로 지정
-    std::string csvPath = "..\\..\\GDELT\\GDELT_2013_2024_Cleaned.csv";
+    std::string csvPath = "..\\..\\GDELT\\GDELT_2013_2024_Cleaned_Grouped_Log.csv";
     std::string csvPath_ACLED = "..\\..\\ACLED\\Continental\\ACLED_2013_2024.csv";
     std::string csvPath_Vdem = "..\\..\\V-Dem\\VDemData_2013_2024_Cleaned.csv";
 
@@ -266,7 +357,7 @@ int main() {
     // ==========================================================
 
     // ── ACLED Preview ─────────────────────────────────────────
-    // 실제 컬럼 순서:
+    // 실제 컬럼 순서: 
     //  [0]event_id_cnty [1]event_date [2]year [3]event_type [4]sub_event_type
     //  [5]interaction   [6]fatalities [7]latitude [8]longitude
     //  [9]country       [10]country_std [11]group
@@ -610,6 +701,60 @@ int main() {
 
     file_Vdem.close();
     std::cout << "Load V-Dem Complete! (" << rawData_Vdem.size() << " points)" << std::endl;
+
+    // ==========================================================
+// GDELT에서 한국(South Korea) 자료 찾아서 모두 출력 (KOR, KS 대응)
+// ==========================================================
+    std::cout << "\n========================================\n";
+    std::cout << " [GDELT] 한국(South Korea) 데이터 출력 \n";
+    std::cout << "========================================\n";
+
+    int koreaCount = 0;
+    for (const auto& pt : rawData) {
+        // 소문자로 변환하여 ALIAS_MAP에서 정규화된 국가명 찾기
+        std::string lowerCode = ToLowerCase(pt.countryCode);
+        std::string canonicalName = pt.countryCode;
+
+        if (ALIAS_MAP.find(lowerCode) != ALIAS_MAP.end()) {
+            canonicalName = ALIAS_MAP[lowerCode];
+        }
+
+        // 정규화된 이름이 'South Korea'이거나, 원본 코드가 'KOR'(Actor) 또는 'KS'(Geo)인 경우
+        if (canonicalName == "South Korea" || pt.countryCode == "KOR" || pt.countryCode == "KS") {
+            koreaCount++;
+
+            // 데이터가 너무 많을 경우를 대비해 콘솔 출력은 100개까지만 (선택 사항)
+            if (koreaCount <= 100) {
+                // CANONICAL 맵을 이용하여 소속 그룹(Group) 동적 확인
+                std::string groupName = "OTHER";
+                if (CANONICAL.find("South Korea") != CANONICAL.end()) {
+                    groupName = CANONICAL["South Korea"];
+                }
+
+                // 출력 시 Articles(Log) 명시 및 Std_Name, Group 컬럼 추가 노출
+                std::cout << "[" << koreaCount << "] Date: " << pt.sqlDate
+                    << " | Code: " << pt.countryCode
+                    << " | Event: " << pt.eventCode
+                    << " | Goldstein: " << pt.goldstein
+                    << " | Tone: " << pt.avgTone
+                    << " | Mentions: " << pt.totalMentions
+                    << " | Articles(Log): " << pt.totalArticles
+                    << " | Country_Std: " << "South Korea"
+                    << " | Group: " << groupName << "\n";
+            }
+            else if (koreaCount == 101) {
+                std::cout << " -> ... (출력 생략: 데이터가 100개를 초과했습니다) ...\n";
+            }
+        }
+    }
+    
+    if (koreaCount == 0) {
+        std::cout << " -> 한국(South Korea) 데이터가 없습니다.\n";
+    }
+    else {
+        std::cout << " -> 📌 총 " << koreaCount << " 개의 한국(South Korea) 데이터가 포착되었습니다.\n";
+    }
+    std::cout << "========================================\n\n";
 
     // ==========================================================
     //  결측치(Missing Values) 국가별 / 변수별 최종 출력 보고서
