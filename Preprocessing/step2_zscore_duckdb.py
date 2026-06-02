@@ -79,9 +79,9 @@ FEATURE_COLS = {
     ],
     # 인도주의 (UNHCR / EM-DAT) — wri.csv 에 *_z 가 존재하므로 여기서 함께 정규화.
     # 0 이 많은 zero-inflated 피처라 위 STD_FLOOR/CLIP 가드의 핵심 보호 대상.
-    "unhcr": [
-        "refugee_outflow", "idp_count", "forced_mig",
-    ],
+    "unhcr": 
+    ["idp_count", "refugee_outflow", "forced_mig_raw"
+     ],
     "emdat": [
         "disaster_flag", "disaster_deaths",
     ],

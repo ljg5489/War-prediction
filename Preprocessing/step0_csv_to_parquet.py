@@ -1,7 +1,7 @@
 """
 step0_csv_to_parquet.py
 ──────────────────────────────────────────────────────────────────────────────
-CSV → Parquet 변환 (QOG / V-Dem / WorldBank / GDELT 전용)
+CSV → Parquet 변환 (QOG / V-Dem / WorldBank / GDELT 전용) - 대용량 OOM 방지 완료 버전
 
 UCDP는 step1에서 집계 후 자동으로 Parquet 저장됩니다.
 나머지 데이터셋은 이 스크립트로 변환 후 step2에 입력하세요.
@@ -46,8 +46,9 @@ EXPECTED_COLS = {
     "qog":   ["year", "country_std", "group", "al_ethnic2000"],
     "vdem":  ["year", "country_std", "group", "v2x_libdem", "v2elintim", "v2x_corr"],
     "wb":    ["year", "country_std", "group",
-              "ny_gdp_pcap_kd_zg", "fp_cpi_totl_zg", "ms_mil_xpnd_gd_zs"],
-    "gdelt": ["year", "country_std", "group", "avg_tone", "goldstein_avg"],
+              "GDP_Growth", "Inflation", "Military_Expenditure"],
+    "gdelt": ["SQLDATE", "ActionGeo_CountryCode",
+              "AvgTone", "AvgGoldstein", "TotalArticles"],
 }
 
 
@@ -73,16 +74,38 @@ def validate(parquet_path: str, dataset_key: str, con):
 
     print(f"  검증: {rows:,}행  /  {len(cols)}컬럼")
 
-    # 연도 범위 & 국가 수
-    summary = con.execute(f"""
-        SELECT
-            COUNT(DISTINCT country_std) AS countries,
-            MIN(year) AS year_min,
-            MAX(year) AS year_max
-        FROM read_parquet('{parquet_path}')
-    """).df()
-    print(f"  국가 수: {summary['countries'].iloc[0]}  "
-          f"/ 연도: {int(summary['year_min'].iloc[0])}~{int(summary['year_max'].iloc[0])}")
+    # normalize_and_group 실행 여부 확인
+    if "country_std" not in cols:
+        print(f"  ⚠️  country_std 컬럼 없음 → normalize_and_group.py 를 먼저 실행하세요.")
+        print(f"      올바른 순서: normalize_and_group.py → step0 → step2 → step3")
+        return
+
+    # 연도 범위 — year 또는 week 컬럼 자동 감지
+    has_year = "year" in cols
+    has_week = any(c.lower() in ("week", "week_id") for c in cols)
+
+    if has_year:
+        summary = con.execute(f"""
+            SELECT COUNT(DISTINCT country_std) AS countries,
+                   MIN(year) AS t_min, MAX(year) AS t_max
+            FROM read_parquet('{parquet_path}')
+        """).df()
+        print(f"  국가 수: {summary['countries'].iloc[0]}  "
+              f"/ 연도: {int(summary['t_min'].iloc[0])}~{int(summary['t_max'].iloc[0])}")
+    elif has_week:
+        week_col = next(c for c in cols if c.lower() in ("week", "week_id"))
+        summary  = con.execute(f"""
+            SELECT COUNT(DISTINCT country_std) AS countries,
+                   MIN("{week_col}") AS t_min, MAX("{week_col}") AS t_max
+            FROM read_parquet('{parquet_path}')
+        """).df()
+        print(f"  국가 수: {summary['countries'].iloc[0]}  "
+              f"/ 기간: {summary['t_min'].iloc[0]}~{summary['t_max'].iloc[0]}")
+    else:
+        n = con.execute(
+            f"SELECT COUNT(DISTINCT country_std) FROM read_parquet('{parquet_path}')"
+        ).fetchone()[0]
+        print(f"  국가 수: {n}  / 시간 컬럼 없음")
 
     # 필요 컬럼 존재 여부
     expected = EXPECTED_COLS.get(dataset_key, [])
@@ -106,18 +129,50 @@ def convert(csv_path: str, output_dir: str, con) -> str:
     if os.path.exists(out_path):
         print(f"  ⚠️  이미 존재: {os.path.basename(out_path)} → 덮어씁니다")
 
-    # CSV 로딩
-    print(f"  로딩 중...")
-    df = pd.read_csv(csv_path, low_memory=False)
     before_mb = os.path.getsize(csv_path) / 1024 / 1024
-    print(f"  CSV: {len(df):,}행  ×  {len(df.columns)}컬럼  ({before_mb:.1f} MB)")
+    print(f"  CSV 크기: {before_mb:.1f} MB")
 
-    # Parquet 저장
-    table = pa.Table.from_pandas(df)
-    pq.write_table(table, out_path, compression="snappy")
+    # ── DuckDB 스트리밍으로 변환 (메모리 문제 없음) ───────────────────────
+    print(f"  변환 중 (DuckDB 스트리밍)...")
+    try:
+        con.execute(f"""
+            COPY (
+                SELECT * FROM read_csv(
+                    '{csv_path}',
+                    ignore_errors = true,
+                    null_padding  = true
+                )
+            )
+            TO '{out_path}' (FORMAT PARQUET, COMPRESSION SNAPPY)
+        """)
+    except Exception as e:
+        # 🔴 핵심 수정: DuckDB 실패 시 pandas 청크 스트리밍 방식으로 안정적인 전환 (OOM 원천 차단)
+        print(f"  ⚠️  DuckDB 변환 실패 ({e})")
+        print(f"  pandas + PyArrow 스트리밍 방식으로 안전하게 재시도 중...")
+        
+        writer = None
+        # 데이터 유실 방지를 위해 chunksize는 유지하되 파일에 직접 스트리밍 기록
+        for chunk in pd.read_csv(csv_path, chunksize=500_000,
+                                  low_memory=True, on_bad_lines="skip"):
+            # pandas DataFrame을 PyArrow Table로 변환
+            table = pa.Table.from_pandas(chunk)
+            
+            # 첫 청크에서 스키마를 정의하여 라이터 인스턴스 생성
+            if writer is None:
+                writer = pq.ParquetWriter(out_path, table.schema, compression="snappy")
+            
+            # 청크 단위 데이터를 실시간으로 디스크 파일에 추가 저장 (Append)
+            writer.write_table(table)
+            
+        # 작업 종료 후 안전하게 스트림 닫기
+        if writer is not None:
+            writer.close()
+
     after_mb = os.path.getsize(out_path) / 1024 / 1024
-
-    print(f"  Parquet: {after_mb:.1f} MB  "
+    rows     = con.execute(
+        f"SELECT COUNT(*) FROM read_parquet('{out_path}')"
+    ).fetchone()[0]
+    print(f"  Parquet: {rows:,}행  /  {after_mb:.1f} MB  "
           f"(압축률 {(1 - after_mb/before_mb)*100:.0f}% 감소)")
     print(f"  저장: {out_path}")
 

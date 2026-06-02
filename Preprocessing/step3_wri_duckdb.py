@@ -47,6 +47,10 @@ import argparse
 # ── WRI 가중치 ────────────────────────────────────────────────────────────────
 W = {"CII": 0.35, "ESC": 0.20, "SFI": 0.15, "Econ": 0.10, "Spill": 0.12, "Polit": 0.08}
 
+# ── 분석 연도 범위 ────────────────────────────────────────────────────────────
+YEAR_MIN = 2013
+YEAR_MAX = 2024
+
 # ── 파일명 키워드 → 내부 키 매핑 ─────────────────────────────────────────────
 KEYWORDS = {
     "ucdp":         "ucdp",
@@ -57,7 +61,8 @@ KEYWORDS = {
     "world_bank":   "wb",
     "wb":           "wb",
     "gdelt":        "gdelt",
-    "acled_weekly": "acled",   # step1b 출력
+    "acled_weekly": "acled",   # step1b 출력 (주간 집계)
+    "acled":        "acled",   # step1 출력 (연간 집계) ← 추가
     "reign":        "reign",   # step1c 출력
     "unhcr":        "unhcr",   # step1c 출력
     "fao":          "fao",     # step1c 출력
@@ -133,14 +138,84 @@ def col_expr(key, colname, alias, parquet, con, fallback="0.0") -> str:
     return fallback
 
 
-def make_join(key: str, alias: str, parquet: dict) -> str:
+def make_join(key: str, alias: str, parquet: dict, on_year: bool = True) -> str:
     fpath = parquet.get(key)
-    if fpath:
+    if not fpath:
+        return f"-- {key}: 파일 없음, 스킵"
+
+    # GDELT 전용: SQLDATE(YYYYMMDD) → year 추출 + country 컬럼 자동 감지
+    if key == "gdelt":
+        return f"LEFT JOIN gdelt_annual {alias} ON u.country_std = {alias}.country_std AND u.year = {alias}.year"
+
+    # 시간 고정값(예: QOG al_ethnic2000) → 연도 무관, 국가 기준으로만 JOIN.
+    # DISTINCT 로 국가당 1행 보장(연도 fan-out 방지).
+    if not on_year:
         return (
-            f"LEFT JOIN read_parquet('{fpath}') {alias} "
-            f"ON u.country_std = {alias}.country_std AND u.year = {alias}.year"
+            f"LEFT JOIN (SELECT DISTINCT * FROM read_parquet('{fpath}')) {alias} "
+            f"ON u.country_std = {alias}.country_std"
         )
-    return f"-- {key}: 파일 없음, 스킵"
+
+    return (
+        f"LEFT JOIN read_parquet('{fpath}') {alias} "
+        f"ON u.country_std = {alias}.country_std AND u.year = {alias}.year"
+    )
+
+
+def make_gdelt_cte(parquet: dict, con) -> str:
+    """
+    GDELT 전용 CTE: SQLDATE(YYYYMMDD) → year 추출 + 국가+연도 집계
+    country_std 없으면 ActionGeo_CountryCode 사용
+    """
+    fpath = parquet.get("gdelt")
+    if not fpath:
+        return ""
+
+    gdelt_cols = con.execute(
+        f"DESCRIBE SELECT * FROM read_parquet('{fpath}')"
+    ).df()["column_name"].tolist()
+
+    # country 컬럼 선택
+    if "country_std" in gdelt_cols:
+        ctry_src = "country_std"
+    elif "ActionGeo_CountryCode" in gdelt_cols:
+        ctry_src = "ActionGeo_CountryCode"
+        print("   ⚠️  GDELT: country_std 없음 → ActionGeo_CountryCode 사용")
+    else:
+        print("   ⚠️  GDELT: 국가 컬럼 없음 → GDELT 스킵")
+        return ""
+
+    # year 컬럼 선택
+    if "year" in gdelt_cols:
+        year_src = "year"
+    elif "SQLDATE" in gdelt_cols:
+        year_src = "CAST(SUBSTR(CAST(SQLDATE AS VARCHAR), 1, 4) AS INTEGER)"
+    else:
+        print("   ⚠️  GDELT: 날짜 컬럼 없음 → GDELT 스킵")
+        return ""
+
+    # _z 컬럼 우선, 없으면 원본
+    tone_src = "AvgTone_z"      if "AvgTone_z"      in gdelt_cols else "AvgTone"
+    gold_src = "AvgGoldstein_z" if "AvgGoldstein_z" in gdelt_cols else "AvgGoldstein"
+
+    return f"""
+gdelt_annual AS (
+    -- SQLDATE(YYYYMMDD) → year 추출, 국가+연도 평균 집계
+    SELECT
+        country_std,
+        year,
+        AVG({tone_src}) AS AvgTone_z,
+        AVG({gold_src}) AS AvgGoldstein_z
+    FROM (
+        SELECT
+            {ctry_src}   AS country_std,
+            {year_src}   AS year,
+            {tone_src},
+            {gold_src}
+        FROM read_parquet('{fpath}')
+    ) t
+    GROUP BY country_std, year
+),
+"""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -276,14 +351,30 @@ def build_wri_query(parquet: dict, con, regcluster_tbl: str | None) -> str:
         )
         print("   Econ: FAO 없음 → GDP(-0.60) + CPI(0.40)")
 
+    # ── GDELT CTE 생성 (SQLDATE→year 추출 + 국가+연도 집계) ──────────────────
+    gdelt_cte_str = make_gdelt_cte(parquet, con)
+    if not gdelt_cte_str.strip():
+        # GDELT 없거나 필수 컬럼 없음 → 더미 CTE
+        gdelt_cte_str = """
+gdelt_annual AS (
+    SELECT NULL::VARCHAR AS country_std, NULL::INTEGER AS year,
+           NULL::DOUBLE AS AvgTone_z, NULL::DOUBLE AS AvgGoldstein_z
+    WHERE FALSE
+),
+"""
+
     # ────────────────────────────────────────────────────────────────────────
     # Spill = ACLED(50%) + GDELT(25%) + UNHCR refugee(25%)
     #   가용 소스에 따라 비율 자동 조정
     # ────────────────────────────────────────────────────────────────────────
-    gdelt_raw  = (
-        f"0.50*COALESCE({col_expr('gdelt','AvgTone_z',      'g',parquet,con)},0.0)"
-        f"+0.50*COALESCE({col_expr('gdelt','AvgGoldstein_z','g',parquet,con)},0.0)"
-    )
+    # GDELT는 CTE(gdelt_annual)를 통해 접근 → col_expr 대신 직접 참조
+    if parquet.get("gdelt"):
+        gdelt_raw = (
+            "0.50*COALESCE(g.AvgTone_z, 0.0)"
+            "+0.50*COALESCE(g.AvgGoldstein_z, 0.0)"
+        )
+    else:
+        gdelt_raw = "0.0"
     unhcr_ref  = col_expr("unhcr", "refugee_outflow_z", "h", parquet, con)
     has_unhcr  = parquet.get("unhcr") is not None
 
@@ -381,7 +472,7 @@ acled_annual AS (
 
     # ── 전체 JOIN 목록 ────────────────────────────────────────────────────────
     joins = "\n    ".join([
-        make_join("qog",   "q", parquet),
+        make_join("qog",   "q", parquet, on_year=False),
         make_join("vdem",  "v", parquet),
         make_join("wb",    "w", parquet),
         make_join("gdelt", "g", parquet),
@@ -417,6 +508,8 @@ ucdp_final AS (
     FROM ucdp_esc
 ),
 
+-- ③ GDELT: SQLDATE → year 추출 + 국가+연도 집계
+{gdelt_cte_str}
 {acled_cte}
 -- ③ JOIN + 서브인덱스 계산
 sub_index AS (
@@ -459,6 +552,7 @@ wri_final AS (
 )
 
 SELECT * FROM wri_final
+WHERE year BETWEEN {YEAR_MIN} AND {YEAR_MAX}
 ORDER BY country_std, year
 """
 
