@@ -59,6 +59,9 @@ MA_SHORT = 4    # fatality_4w_ma
 MA_LONG  = 12   # fatality_12w_ma
 LAG_1    = 4    # event_count_lag4
 LAG_2    = 8    # event_count_lag8
+EPS      = 1e-8
+Z_CLIP   = 8.0
+REGCLUSTER_THRESHOLD = 1.5
 
 # ── 연간 → 주 broadcast 대상 (wri_labeled_fixed.csv 안에서 가져옴) ───────────
 # 주간 acled 에 이미 있는 컬럼(CII/ESC/Z_CII/regcluster 등)은 제외하고
@@ -68,7 +71,7 @@ ANNUAL_FEATURES = [
     "idp_count_z", "disaster_flag_z", "disaster_deaths_z",
     "WRI", "theta_c",
 ]
-# 라벨 계열
+# ?쇰꺼 怨꾩뿴
 LABEL_COLS = ["Y", "is_war_year", "annual_deaths"]
 
 
@@ -80,6 +83,65 @@ def load_acled(acled_path: str) -> pd.DataFrame:
     df = pd.read_parquet(acled_path)
     print(f"📂 ACLED 주간 베이스: {len(df):,}행 / {df['country_std'].nunique()}개국")
     print(f"   기간: {df['week_id'].min()} ~ {df['week_id'].max()}")
+    return df
+
+def infer_acled_z_path(acled_path: str, annual_dir: str | None = None) -> str | None:
+    """Find acled_weekly_z.parquet when --acled-z is omitted."""
+    candidates = []
+    if annual_dir:
+        candidates.append(os.path.join(annual_dir, "acled_weekly_z.parquet"))
+
+    candidates.extend([
+        os.path.join(os.getcwd(), "02_zscore", "acled_weekly_z.parquet"),
+        os.path.join(os.path.dirname(acled_path), "acled_weekly_z.parquet"),
+        acled_path.replace("acled_weekly.parquet", "acled_weekly_z.parquet"),
+    ])
+
+    for path in candidates:
+        if path and os.path.exists(path):
+            return path
+    return None
+
+
+def load_acled_z(acled_z_path: str | None) -> pd.DataFrame | None:
+    """Load weekly ACLED z-score columns and normalize their names."""
+    if not acled_z_path or not os.path.exists(acled_z_path):
+        print("   acled_weekly_z.parquet 없음 -> raw ACLED rolling 값으로 z-score fallback 계산")
+        return None
+
+    z = pd.read_parquet(acled_z_path)
+    rename = {
+        "CII_roll7_z": "Z_CII_7d",
+        "CII_roll90_z": "Z_CII_90d",
+    }
+    z = z.rename(columns={k: v for k, v in rename.items() if k in z.columns})
+
+    keep = ["country_std", "week_id"]
+    for col in ["Z_CII_7d", "Z_CII_90d", "spillover_z"]:
+        if col in z.columns:
+            keep.append(col)
+
+    missing = [c for c in ["Z_CII_7d", "Z_CII_90d"] if c not in z.columns]
+    if missing:
+        print(f"   acled z 파일에 없는 필수 컬럼: {missing} -> 가능한 값만 병합")
+    else:
+        print(f"   ACLED z-score 로드: {os.path.basename(acled_z_path)}")
+
+    return z[keep].drop_duplicates(subset=["country_std", "week_id"])
+
+
+def merge_acled_z(df_week: pd.DataFrame, df_z: pd.DataFrame | None) -> pd.DataFrame:
+    if df_z is None:
+        return df_week
+
+    drop_existing = [c for c in ["Z_CII_7d", "Z_CII_90d", "spillover_z"] if c in df_week.columns]
+    df = df_week.drop(columns=drop_existing, errors="ignore")
+    df = df.merge(df_z, on=["country_std", "week_id"], how="left")
+
+    for col in ["Z_CII_7d", "Z_CII_90d"]:
+        if col in df.columns:
+            nz = int((df[col].fillna(0) != 0).sum())
+            print(f"   {col}: nonzero {nz:,}/{len(df):,}")
     return df
 
 
@@ -233,14 +295,72 @@ def complete_weekly_grid(df: pd.DataFrame) -> pd.DataFrame:
 # 4. F1~F15 파생 계산
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _country_zscore(df: pd.DataFrame, source_col: str, out_col: str) -> pd.DataFrame:
+    g = df.groupby("country_std", sort=False)[source_col]
+    mu = g.transform("mean")
+    sd = g.transform("std").fillna(0.0)
+    z = np.where(sd < 1e-6, 0.0, (df[source_col].astype(float) - mu) / sd)
+    df[out_col] = np.clip(z, -Z_CLIP, Z_CLIP)
+    return df
+
+
+def ensure_weekly_risk_signals(df: pd.DataFrame) -> pd.DataFrame:
+    """Ensure weekly Z_CII, ESC, and regcluster are live before F-feature mapping."""
+    df = df.sort_values(["country_std", "year", "week_num"]).copy()
+
+    if "Z_CII_7d" not in df.columns or df["Z_CII_7d"].fillna(0).abs().sum() == 0:
+        if "CII_roll7" in df.columns:
+            print("   Z_CII_7d 없음/상수 -> CII_roll7 기준 fallback z-score 계산")
+            df = _country_zscore(df, "CII_roll7", "Z_CII_7d")
+        else:
+            raise ValueError("Z_CII_7d 또는 CII_roll7 컬럼이 필요합니다.")
+
+    if "Z_CII_90d" not in df.columns or df["Z_CII_90d"].fillna(0).abs().sum() == 0:
+        if "CII_roll90" in df.columns:
+            print("   Z_CII_90d 없음/상수 -> CII_roll90 기준 fallback z-score 계산")
+            df = _country_zscore(df, "CII_roll90", "Z_CII_90d")
+        else:
+            raise ValueError("Z_CII_90d 또는 CII_roll90 컬럼이 필요합니다.")
+
+    df["ESC"] = (
+        (df["Z_CII_7d"].astype(float) - df["Z_CII_90d"].astype(float))
+        / (df["Z_CII_90d"].astype(float).abs() + EPS)
+    ).clip(-Z_CLIP, Z_CLIP)
+
+    if "regcluster" not in df.columns or df["regcluster"].fillna(0).abs().sum() == 0:
+        high_share = (
+            df.assign(_high=(df["Z_CII_90d"].astype(float) > REGCLUSTER_THRESHOLD).astype(float))
+              .groupby(["group", "week_id"], sort=False)["_high"]
+              .mean()
+              .rename("regcluster")
+              .reset_index()
+        )
+        df = df.drop(columns=["regcluster"], errors="ignore").merge(
+            high_share, on=["group", "week_id"], how="left"
+        )
+        df["regcluster"] = df["regcluster"].fillna(0.0)
+        print("   regcluster: group-week high-risk share 기준 계산")
+
+    for col in ["Z_CII_90d", "ESC", "regcluster"]:
+        nz = int((df[col].fillna(0) != 0).sum())
+        print(f"   {col}: nonzero {nz:,}/{len(df):,}")
+
+    return df.reset_index(drop=True)
+
+
 def build_f_features(df: pd.DataFrame, pop_col: str | None) -> pd.DataFrame:
     df = df.copy()
 
     # F2 / F3 / F9 / F10  : 이미 acled_weekly 에 존재 → 별칭만 부여
-    df["F2_Z_CII"]      = df.get("Z_CII_90d", 0.0)
-    df["F3_ESC"]        = df.get("ESC", 0.0)
+    required_weekly = ["Z_CII_90d", "ESC", "regcluster"]
+    missing_weekly = [c for c in required_weekly if c not in df.columns]
+    if missing_weekly:
+        raise ValueError(f"필수 주간 위험 피처가 없습니다: {missing_weekly}")
+
+    df["F2_Z_CII"]      = df["Z_CII_90d"].fillna(0.0)
+    df["F3_ESC"]        = df["ESC"].fillna(0.0)
     df["F9_Spillover"]  = df.get("spillover", 0.0)
-    df["F10_RegCluster"] = df.get("regcluster", 0.0)
+    df["F10_RegCluster"] = df["regcluster"].fillna(0.0)
 
     # F1 CII_pc = CII / (Pop / 1e6)
     if pop_col and pop_col in df.columns and df[pop_col].notna().any():
@@ -310,7 +430,7 @@ def build_timeseries_features(df: pd.DataFrame) -> pd.DataFrame:
 # 6. 메인
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run(acled_path, wri_path, annual_dir, output_dir):
+def run(acled_path, wri_path, annual_dir, output_dir, acled_z_path=None):
     os.makedirs(output_dir, exist_ok=True)
 
     print("=" * 64)
@@ -318,6 +438,8 @@ def run(acled_path, wri_path, annual_dir, output_dir):
     print("=" * 64)
 
     df_week = load_acled(acled_path)
+    acled_z_path = acled_z_path or infer_acled_z_path(acled_path, annual_dir)
+    df_week = merge_acled_z(df_week, load_acled_z(acled_z_path))
     df_wri  = load_wri_annual(wri_path)
     annual  = load_annual_folder(annual_dir)
 
@@ -326,6 +448,8 @@ def run(acled_path, wri_path, annual_dir, output_dir):
     pop_col = df.attrs.get("pop_col")
 
     df = complete_weekly_grid(df)
+    print("\n?㎜ 二쇨컙 Z_CII / ESC / regcluster ?앹꽦...")
+    df = ensure_weekly_risk_signals(df)
     df.attrs["pop_col"] = pop_col   # groupby 후 attrs 유실 방지
 
     print("\n🧮 F1~F15 파생 계산...")
@@ -333,6 +457,7 @@ def run(acled_path, wri_path, annual_dir, output_dir):
 
     print("\n🧮 시계열 파생 계산...")
     df = build_timeseries_features(df)
+
 
     # ── 컬럼 정리 ─────────────────────────────────────────────────────────────
     id_cols = ["country_std", "year", "week_num", "week_id", "group"]
@@ -380,6 +505,7 @@ def run(acled_path, wri_path, annual_dir, output_dir):
 def main():
     p = argparse.ArgumentParser(description="주 단위 F1~F15 피처 행렬 조립")
     p.add_argument("--acled",  default=None, help="acled_weekly.parquet (필수)")
+    p.add_argument("--acled-z", default=None, help="acled_weekly_z.parquet (권장, 없으면 자동 탐색/fallback)")
     p.add_argument("--wri",    default=None, help="wri_labeled_fixed.csv (권장)")
     p.add_argument("--annual", default=None, help="vdem_z/wb_z parquet 폴더 (선택)")
     p.add_argument("--out",    default=None, help="출력 폴더 (기본: ./05_features)")
@@ -406,8 +532,9 @@ def main():
         annual = ans if ans else None
 
     out = args.out or os.path.join(os.path.dirname(acled) or ".", "05_features")
-    run(acled, wri, annual, out)
+    run(acled, wri, annual, out, args.acled_z)
 
 
 if __name__ == "__main__":
     main()
+
