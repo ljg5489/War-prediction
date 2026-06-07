@@ -36,7 +36,7 @@ if len(dataframes) > 0:
     merged_df = pd.concat(dataframes, ignore_index=True)
     
     # 결과물도 같은 폴더에 저장되도록 경로 지정
-    output_path = os.path.join(current_dir, "ACLED_All_Countries.csv")
+    output_path = os.path.join(current_dir, "ACLED_All_Countries_.csv")
     merged_df.to_csv(output_path, index=False, encoding="utf-8-sig")
     print(f"\n✅ Merge complete! Saved as '{output_path}'.")
 else:
